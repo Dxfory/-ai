@@ -1,0 +1,36 @@
+version: "3.8"
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://meiyu:meiyu@db:5432/meiyu
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ../uploads:/app/uploads
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: meiyu
+      POSTGRES_PASSWORD: meiyu
+      POSTGRES_DB: meiyu
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./schema_postgresql.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U meiyu"]
+      interval: 5s; timeout: 5s; retries: 5
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+volumes:
+  pgdata:
