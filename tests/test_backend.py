@@ -57,6 +57,25 @@ def test_round_artwork_border_clips_generated_lines(tmp_path):
     assert any(restored.getpixel((x, y)) == 0 for x in range(180, 220) for y in range(25, 55))
 
 
+def test_rounded_page_border_uses_original_shape(tmp_path):
+    original_path = tmp_path / "rounded_page.png"
+    original = Image.new("RGB", (500, 420), "white")
+    draw_original = ImageDraw.Draw(original)
+    draw_original.rounded_rectangle((45, 20, 455, 390), radius=95, fill=(168, 124, 82))
+    original.save(original_path)
+
+    generated = Image.new("L", (500, 420), 255)
+    draw_generated = ImageDraw.Draw(generated)
+    draw_generated.line((0, 210, 499, 210), fill=0, width=5)
+    draw_generated.line((250, 0, 250, 419), fill=0, width=5)
+
+    restored = _restore_round_border_from_original(generated, str(original_path))
+
+    assert restored.getpixel((5, 210)) == 255
+    assert restored.getpixel((250, 5)) == 255
+    assert any(restored.getpixel((x, y)) == 0 for x in range(35, 60) for y in range(190, 230))
+
+
 def test_create_and_filter_asset():
     resp = client.post("/api/v1/assets/", json={
         "title": "Public domain flower study",

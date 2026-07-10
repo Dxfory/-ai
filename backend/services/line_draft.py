@@ -326,11 +326,10 @@ def _make_baimiao_structure_guide(source_path: str, output_path: str) -> None:
     guide = guide.point(lambda value: 0 if value < 210 else 255)
     guide = guide.filter(ImageFilter.MinFilter(size=3))
     guide = _remove_tiny_specks(guide)
-    border = _detect_round_artwork_border(img)
-    if border:
+    artwork_mask = _detect_artwork_region_mask(img)
+    if artwork_mask:
         guide = guide.convert("L")
-        draw = ImageDraw.Draw(guide)
-        draw.ellipse(border, outline=0, width=max(2, round(min(guide.size) * 0.0025)))
+        guide.paste(0, mask=_mask_outline(artwork_mask))
     guide.save(output_path)
 
 
@@ -368,76 +367,86 @@ def _remove_tiny_specks(img: Image.Image) -> Image.Image:
 
 
 def _restore_round_border_from_original(clean: Image.Image, original_path: str) -> Image.Image:
-    original = Image.open(original_path).convert("RGB")
-    original.thumbnail(clean.size, Image.Resampling.LANCZOS)
-    border = _detect_round_artwork_border(original)
-    if not border:
+    original = Image.open(original_path).convert("RGB").resize(clean.size, Image.Resampling.LANCZOS)
+    artwork_mask = _detect_artwork_region_mask(original)
+    if not artwork_mask:
         return clean
 
     result = clean.convert("L")
-    x_scale = result.width / original.width
-    y_scale = result.height / original.height
-    scaled = (
-        round(border[0] * x_scale),
-        round(border[1] * y_scale),
-        round(border[2] * x_scale),
-        round(border[3] * y_scale),
-    )
-    result = _clear_outside_ellipse(result, scaled)
-    draw = ImageDraw.Draw(result)
-    draw.ellipse(scaled, outline=0, width=max(2, round(min(result.size) * 0.0025)))
+    result = _clear_outside_artwork_mask(result, artwork_mask)
+    result.paste(0, mask=_mask_outline(artwork_mask))
     return result
 
 
-def _clear_outside_ellipse(img: Image.Image, ellipse: tuple[int, int, int, int]) -> Image.Image:
+def _clear_outside_artwork_mask(img: Image.Image, mask: Image.Image) -> Image.Image:
     result = img.convert("L")
-    mask = Image.new("L", result.size, 0)
-    draw = ImageDraw.Draw(mask)
-    inset = max(1, round(min(result.size) * 0.0015))
-    inner = (
-        ellipse[0] + inset,
-        ellipse[1] + inset,
-        ellipse[2] - inset,
-        ellipse[3] - inset,
-    )
-    draw.ellipse(inner, fill=255)
+    inner_mask = mask.convert("L").filter(ImageFilter.MinFilter(size=3))
     white = Image.new("L", result.size, 255)
-    white.paste(result, mask=mask)
+    white.paste(result, mask=inner_mask)
     return white
 
 
-def _detect_round_artwork_border(img: Image.Image) -> tuple[int, int, int, int] | None:
+def _detect_artwork_region_mask(img: Image.Image) -> Image.Image | None:
     rgb = img.convert("RGB")
     width, height = rgb.size
     pixels = rgb.load()
-    sample_step = max(1, min(width, height) // 240)
-    candidates: list[tuple[int, int]] = []
-    for y in range(0, height, sample_step):
-        for x in range(0, width, sample_step):
+    min_row_pixels = max(12, round(width * 0.035))
+    row_spans: list[tuple[int, int, int]] = []
+    for y in range(height):
+        xs: list[int] = []
+        for x in range(width):
             r, g, b = pixels[x, y]
             if _is_warm_artwork_ground(r, g, b):
-                candidates.append((x, y))
-    if not candidates:
+                xs.append(x)
+        if len(xs) >= min_row_pixels:
+            left_index = max(0, round(len(xs) * 0.02) - 1)
+            right_index = min(len(xs) - 1, round(len(xs) * 0.98))
+            row_spans.append((y, xs[left_index], xs[right_index]))
+    if len(row_spans) < max(20, height * 0.2):
         return None
 
-    xs = [p[0] for p in candidates]
-    ys = [p[1] for p in candidates]
-    left, right = min(xs), max(xs)
-    top, bottom = min(ys), max(ys)
-    box_w = right - left
-    box_h = bottom - top
+    top = row_spans[0][0]
+    bottom = row_spans[-1][0]
+    left = min(span[1] for span in row_spans)
+    right = max(span[2] for span in row_spans)
+    box_w = right - left + 1
+    box_h = bottom - top + 1
     if box_w < width * 0.55 or box_h < height * 0.55:
         return None
-    if abs(box_w - box_h) > min(box_w, box_h) * 0.18:
-        return None
 
-    pad = max(2, round(min(width, height) * 0.005))
+    mask = Image.new("L", rgb.size, 0)
+    draw = ImageDraw.Draw(mask)
+    smooth_window = max(3, round(height * 0.008))
+    if smooth_window % 2 == 0:
+        smooth_window += 1
+    half = smooth_window // 2
+    for index, (y, _, _) in enumerate(row_spans):
+        window = row_spans[max(0, index - half): min(len(row_spans), index + half + 1)]
+        smoothed_left = sorted(span[1] for span in window)[len(window) // 2]
+        smoothed_right = sorted(span[2] for span in window)[len(window) // 2]
+        draw.line((smoothed_left, y, smoothed_right, y), fill=255)
+    blur_radius = max(1.0, min(width, height) / 260)
     return (
-        max(0, left - pad),
-        max(0, top - pad),
-        min(width - 1, right + pad),
-        min(height - 1, bottom + pad),
+        mask
+        .filter(ImageFilter.MaxFilter(size=3))
+        .filter(ImageFilter.GaussianBlur(radius=blur_radius))
+        .point(lambda value: 255 if value >= 128 else 0)
+        .filter(ImageFilter.MedianFilter(size=3))
     )
+
+
+def _mask_outline(mask: Image.Image) -> Image.Image:
+    expanded = mask.filter(ImageFilter.MaxFilter(size=3))
+    contracted = mask.filter(ImageFilter.MinFilter(size=3))
+    outline = Image.new("L", mask.size, 0)
+    expanded_pixels = expanded.load()
+    contracted_pixels = contracted.load()
+    outline_pixels = outline.load()
+    width, height = mask.size
+    for y in range(height):
+        for x in range(width):
+            outline_pixels[x, y] = 255 if expanded_pixels[x, y] != contracted_pixels[x, y] else 0
+    return outline
 
 
 def _is_warm_artwork_ground(r: int, g: int, b: int) -> bool:
