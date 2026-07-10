@@ -16,5 +16,6 @@ uploads/
 datasets/raw_books/*
 !datasets/raw_books/.gitkeep
 datasets/processed_books/**/contact_sheet.jpg
+datasets/processed_books/**/layout_previews/
 datasets/processed_books/**/crops/
 datasets/processed_books/**/ocr/

@@ -1,0 +1,630 @@
+{
+  "book_id": "book_001",
+  "purpose": "Rough layout candidates for OCR, figure-number binding, and technique-unit extraction.",
+  "pages": [
+    {
+      "page_id": "book_001_page_018",
+      "page_index": 18,
+      "regions": [
+        {
+          "region_id": "book_001_page_018_region_001",
+          "page_id": "book_001_page_018",
+          "page_index": 18,
+          "bbox": [
+            176,
+            141,
+            2086,
+            601
+          ],
+          "role_hint": "text_candidate",
+          "confidence": 0.58,
+          "dark_density": 0.1132,
+          "notes": "Wide low-height block; likely title, paragraph, caption, or page note."
+        },
+        {
+          "region_id": "book_001_page_018_region_002",
+          "page_id": "book_001_page_018",
+          "page_index": 18,
+          "bbox": [
+            176,
+            636,
+            2086,
+            1732
+          ],
+          "role_hint": "figure_candidate",
+          "confidence": 0.68,
+          "dark_density": 0.1965,
+          "notes": "Dense visual block; likely artwork detail, photo, or line drawing."
+        },
+        {
+          "region_id": "book_001_page_018_region_003",
+          "page_id": "book_001_page_018",
+          "page_index": 18,
+          "bbox": [
+            3288,
+            1166,
+            3394,
+            1272
+          ],
+          "role_hint": "caption_or_figure_number",
+          "confidence": 0.48,
+          "dark_density": 0.0044,
+          "notes": "Small block; may be figure number, caption, or short label."
+        },
+        {
+          "region_id": "book_001_page_018_region_004",
+          "page_id": "book_001_page_018",
+          "page_index": 18,
+          "bbox": [
+            176,
+            1767,
+            2510,
+            3394
+          ],
+          "role_hint": "figure_candidate",
+          "confidence": 0.68,
+          "dark_density": 0.6971,
+          "notes": "Dense visual block; likely artwork detail, photo, or line drawing."
+        },
+        {
+          "region_id": "book_001_page_018_region_005",
+          "page_id": "book_001_page_018",
+          "page_index": 18,
+          "bbox": [
+            229,
+            1831,
+            944,
+            2457
+          ],
+          "role_hint": "panel_candidate",
+          "confidence": 0.52,
+          "dark_density": 0,
+          "notes": "Projection-detected panel; likely image, caption group, or step block."
+        },
+        {
+          "region_id": "book_001_page_018_region_006",
+          "page_id": "book_001_page_018",
+          "page_index": 18,
+          "bbox": [
+            975,
+            1831,
+            1654,
+            2457
+          ],
+          "role_hint": "panel_candidate",
+          "confidence": 0.52,
+          "dark_density": 0,
+          "notes": "Projection-detected panel; likely image, caption group, or step block."
+        },
+        {
+          "region_id": "book_001_page_018_region_007",
+          "page_id": "book_001_page_018",
+          "page_index": 18,
+          "bbox": [
+            1683,
+            1831,
+            2443,
+            2457
+          ],
+          "role_hint": "panel_candidate",
+          "confidence": 0.52,
+          "dark_density": 0,
+          "notes": "Projection-detected panel; likely image, caption group, or step block."
+        },
+        {
+          "region_id": "book_001_page_018_region_008",
+          "page_id": "book_001_page_018",
+          "page_index": 18,
+          "bbox": [
+            3023,
+            1831,
+            3256,
+            2457
+          ],
+          "role_hint": "caption_or_figure_number",
+          "confidence": 0.48,
+          "dark_density": 0,
+          "notes": "Small block; may be figure number, caption, or short label."
+        },
+        {
+          "region_id": "book_001_page_018_region_009",
+          "page_id": "book_001_page_018",
+          "page_index": 18,
+          "bbox": [
+            226,
+            2538,
+            944,
+            3146
+          ],
+          "role_hint": "panel_candidate",
+          "confidence": 0.52,
+          "dark_density": 0,
+          "notes": "Projection-detected panel; likely image, caption group, or step block."
+        },
+        {
+          "region_id": "book_001_page_018_region_010",
+          "page_id": "book_001_page_018",
+          "page_index": 18,
+          "bbox": [
+            972,
+            2538,
+            1651,
+            3146
+          ],
+          "role_hint": "panel_candidate",
+          "confidence": 0.52,
+          "dark_density": 0,
+          "notes": "Projection-detected panel; likely image, caption group, or step block."
+        },
+        {
+          "region_id": "book_001_page_018_region_011",
+          "page_id": "book_001_page_018",
+          "page_index": 18,
+          "bbox": [
+            1679,
+            2538,
+            2443,
+            3146
+          ],
+          "role_hint": "panel_candidate",
+          "confidence": 0.52,
+          "dark_density": 0,
+          "notes": "Projection-detected panel; likely image, caption group, or step block."
+        },
+        {
+          "region_id": "book_001_page_018_region_012",
+          "page_id": "book_001_page_018",
+          "page_index": 18,
+          "bbox": [
+            3012,
+            2538,
+            3284,
+            3146
+          ],
+          "role_hint": "caption_or_figure_number",
+          "confidence": 0.48,
+          "dark_density": 0,
+          "notes": "Small block; may be figure number, caption, or short label."
+        },
+        {
+          "region_id": "book_001_page_018_region_013",
+          "page_id": "book_001_page_018",
+          "page_index": 18,
+          "bbox": [
+            176,
+            3429,
+            2475,
+            4207
+          ],
+          "role_hint": "figure_candidate",
+          "confidence": 0.68,
+          "dark_density": 0.4729,
+          "notes": "Dense visual block; likely artwork detail, photo, or line drawing."
+        },
+        {
+          "region_id": "book_001_page_018_region_014",
+          "page_id": "book_001_page_018",
+          "page_index": 18,
+          "bbox": [
+            226,
+            3482,
+            579,
+            4005
+          ],
+          "role_hint": "caption_or_figure_number",
+          "confidence": 0.48,
+          "dark_density": 0,
+          "notes": "Small block; may be figure number, caption, or short label."
+        },
+        {
+          "region_id": "book_001_page_018_region_015",
+          "page_id": "book_001_page_018",
+          "page_index": 18,
+          "bbox": [
+            611,
+            3482,
+            1000,
+            4005
+          ],
+          "role_hint": "caption_or_figure_number",
+          "confidence": 0.48,
+          "dark_density": 0,
+          "notes": "Small block; may be figure number, caption, or short label."
+        },
+        {
+          "region_id": "book_001_page_018_region_016",
+          "page_id": "book_001_page_018",
+          "page_index": 18,
+          "bbox": [
+            1028,
+            3482,
+            1760,
+            4005
+          ],
+          "role_hint": "panel_candidate",
+          "confidence": 0.52,
+          "dark_density": 0,
+          "notes": "Projection-detected panel; likely image, caption group, or step block."
+        },
+        {
+          "region_id": "book_001_page_018_region_017",
+          "page_id": "book_001_page_018",
+          "page_index": 18,
+          "bbox": [
+            1792,
+            3482,
+            2429,
+            4005
+          ],
+          "role_hint": "panel_candidate",
+          "confidence": 0.52,
+          "dark_density": 0,
+          "notes": "Projection-detected panel; likely image, caption group, or step block."
+        },
+        {
+          "region_id": "book_001_page_018_region_018",
+          "page_id": "book_001_page_018",
+          "page_index": 18,
+          "bbox": [
+            3001,
+            3482,
+            3231,
+            4005
+          ],
+          "role_hint": "caption_or_figure_number",
+          "confidence": 0.48,
+          "dark_density": 0,
+          "notes": "Small block; may be figure number, caption, or short label."
+        },
+        {
+          "region_id": "book_001_page_018_region_019",
+          "page_id": "book_001_page_018",
+          "page_index": 18,
+          "bbox": [
+            1520,
+            4172,
+            1661,
+            4313
+          ],
+          "role_hint": "caption_or_figure_number",
+          "confidence": 0.48,
+          "dark_density": 0.0437,
+          "notes": "Small block; may be figure number, caption, or short label."
+        },
+        {
+          "region_id": "book_001_page_018_region_020",
+          "page_id": "book_001_page_018",
+          "page_index": 18,
+          "bbox": [
+            951,
+            4363,
+            3387,
+            4826
+          ],
+          "role_hint": "text_candidate",
+          "confidence": 0.58,
+          "dark_density": 0,
+          "notes": "Wide low-height block; likely title, paragraph, caption, or page note."
+        }
+      ]
+    },
+    {
+      "page_id": "book_001_page_026",
+      "page_index": 26,
+      "regions": [
+        {
+          "region_id": "book_001_page_026_region_001",
+          "page_id": "book_001_page_026",
+          "page_index": 26,
+          "bbox": [
+            141,
+            141,
+            2050,
+            530
+          ],
+          "role_hint": "text_candidate",
+          "confidence": 0.58,
+          "dark_density": 0.0955,
+          "notes": "Wide low-height block; likely title, paragraph, caption, or page note."
+        },
+        {
+          "region_id": "book_001_page_026_region_002",
+          "page_id": "book_001_page_026",
+          "page_index": 26,
+          "bbox": [
+            141,
+            565,
+            2050,
+            1767
+          ],
+          "role_hint": "figure_candidate",
+          "confidence": 0.68,
+          "dark_density": 0.1773,
+          "notes": "Dense visual block; likely artwork detail, photo, or line drawing."
+        },
+        {
+          "region_id": "book_001_page_026_region_003",
+          "page_id": "book_001_page_026",
+          "page_index": 26,
+          "bbox": [
+            141,
+            1838,
+            2863,
+            3818
+          ],
+          "role_hint": "large_figure_or_full_artwork",
+          "confidence": 0.72,
+          "dark_density": 0.8045,
+          "notes": "Large visual block; inspect as artwork or full-page figure."
+        },
+        {
+          "region_id": "book_001_page_026_region_004",
+          "page_id": "book_001_page_026",
+          "page_index": 26,
+          "bbox": [
+            201,
+            1888,
+            1050,
+            2757
+          ],
+          "role_hint": "panel_candidate",
+          "confidence": 0.52,
+          "dark_density": 0,
+          "notes": "Projection-detected panel; likely image, caption group, or step block."
+        },
+        {
+          "region_id": "book_001_page_026_region_005",
+          "page_id": "book_001_page_026",
+          "page_index": 26,
+          "bbox": [
+            1078,
+            1888,
+            1926,
+            2757
+          ],
+          "role_hint": "panel_candidate",
+          "confidence": 0.52,
+          "dark_density": 0,
+          "notes": "Projection-detected panel; likely image, caption group, or step block."
+        },
+        {
+          "region_id": "book_001_page_026_region_006",
+          "page_id": "book_001_page_026",
+          "page_index": 26,
+          "bbox": [
+            1955,
+            1888,
+            2800,
+            2757
+          ],
+          "role_hint": "panel_candidate",
+          "confidence": 0.52,
+          "dark_density": 0,
+          "notes": "Projection-detected panel; likely image, caption group, or step block."
+        },
+        {
+          "region_id": "book_001_page_026_region_007",
+          "page_id": "book_001_page_026",
+          "page_index": 26,
+          "bbox": [
+            2962,
+            1888,
+            3213,
+            2757
+          ],
+          "role_hint": "caption_or_figure_number",
+          "confidence": 0.48,
+          "dark_density": 0,
+          "notes": "Small block; may be figure number, caption, or short label."
+        },
+        {
+          "region_id": "book_001_page_026_region_008",
+          "page_id": "book_001_page_026",
+          "page_index": 26,
+          "bbox": [
+            3263,
+            1888,
+            3387,
+            2757
+          ],
+          "role_hint": "caption_or_figure_number",
+          "confidence": 0.48,
+          "dark_density": 0,
+          "notes": "Small block; may be figure number, caption, or short label."
+        },
+        {
+          "region_id": "book_001_page_026_region_009",
+          "page_id": "book_001_page_026",
+          "page_index": 26,
+          "bbox": [
+            205,
+            2849,
+            1053,
+            3712
+          ],
+          "role_hint": "panel_candidate",
+          "confidence": 0.52,
+          "dark_density": 0,
+          "notes": "Projection-detected panel; likely image, caption group, or step block."
+        },
+        {
+          "region_id": "book_001_page_026_region_010",
+          "page_id": "book_001_page_026",
+          "page_index": 26,
+          "bbox": [
+            1081,
+            2849,
+            1934,
+            3712
+          ],
+          "role_hint": "panel_candidate",
+          "confidence": 0.52,
+          "dark_density": 0,
+          "notes": "Projection-detected panel; likely image, caption group, or step block."
+        },
+        {
+          "region_id": "book_001_page_026_region_011",
+          "page_id": "book_001_page_026",
+          "page_index": 26,
+          "bbox": [
+            1962,
+            2849,
+            2807,
+            3712
+          ],
+          "role_hint": "panel_candidate",
+          "confidence": 0.52,
+          "dark_density": 0,
+          "notes": "Projection-detected panel; likely image, caption group, or step block."
+        },
+        {
+          "region_id": "book_001_page_026_region_012",
+          "page_id": "book_001_page_026",
+          "page_index": 26,
+          "bbox": [
+            2941,
+            2849,
+            3206,
+            3712
+          ],
+          "role_hint": "caption_or_figure_number",
+          "confidence": 0.48,
+          "dark_density": 0,
+          "notes": "Small block; may be figure number, caption, or short label."
+        },
+        {
+          "region_id": "book_001_page_026_region_013",
+          "page_id": "book_001_page_026",
+          "page_index": 26,
+          "bbox": [
+            176,
+            3853,
+            1096,
+            4172
+          ],
+          "role_hint": "text_candidate",
+          "confidence": 0.58,
+          "dark_density": 0.1415,
+          "notes": "Wide low-height block; likely title, paragraph, caption, or page note."
+        },
+        {
+          "region_id": "book_001_page_026_region_014",
+          "page_id": "book_001_page_026",
+          "page_index": 26,
+          "bbox": [
+            1485,
+            4207,
+            1661,
+            4348
+          ],
+          "role_hint": "caption_or_figure_number",
+          "confidence": 0.48,
+          "dark_density": 0.0385,
+          "notes": "Small block; may be figure number, caption, or short label."
+        },
+        {
+          "region_id": "book_001_page_026_region_015",
+          "page_id": "book_001_page_026",
+          "page_index": 26,
+          "bbox": [
+            120,
+            4356,
+            304,
+            4826
+          ],
+          "role_hint": "caption_or_figure_number",
+          "confidence": 0.48,
+          "dark_density": 0,
+          "notes": "Small block; may be figure number, caption, or short label."
+        },
+        {
+          "region_id": "book_001_page_026_region_016",
+          "page_id": "book_001_page_026",
+          "page_index": 26,
+          "bbox": [
+            647,
+            4356,
+            3387,
+            4826
+          ],
+          "role_hint": "text_candidate",
+          "confidence": 0.58,
+          "dark_density": 0,
+          "notes": "Wide low-height block; likely title, paragraph, caption, or page note."
+        }
+      ]
+    },
+    {
+      "page_id": "book_001_page_027",
+      "page_index": 27,
+      "regions": [
+        {
+          "region_id": "book_001_page_027_region_001",
+          "page_id": "book_001_page_027",
+          "page_index": 27,
+          "bbox": [
+            210,
+            98,
+            5790,
+            3900
+          ],
+          "role_hint": "large_figure_or_full_artwork",
+          "confidence": 0.72,
+          "dark_density": 0,
+          "notes": "Large visual block; inspect as artwork or full-page figure."
+        }
+      ]
+    },
+    {
+      "page_id": "book_001_page_030",
+      "page_index": 30,
+      "regions": [
+        {
+          "region_id": "book_001_page_030_region_001",
+          "page_id": "book_001_page_030",
+          "page_index": 30,
+          "bbox": [
+            120,
+            176,
+            3387,
+            4826
+          ],
+          "role_hint": "large_figure_or_full_artwork",
+          "confidence": 0.72,
+          "dark_density": 0,
+          "notes": "Large visual block; inspect as artwork or full-page figure."
+        },
+        {
+          "region_id": "book_001_page_030_region_002",
+          "page_id": "book_001_page_030",
+          "page_index": 30,
+          "bbox": [
+            141,
+            3960,
+            2722,
+            4207
+          ],
+          "role_hint": "text_candidate",
+          "confidence": 0.58,
+          "dark_density": 0.0971,
+          "notes": "Wide low-height block; likely title, paragraph, caption, or page note."
+        },
+        {
+          "region_id": "book_001_page_030_region_003",
+          "page_id": "book_001_page_030",
+          "page_index": 30,
+          "bbox": [
+            1485,
+            4207,
+            1626,
+            4348
+          ],
+          "role_hint": "caption_or_figure_number",
+          "confidence": 0.48,
+          "dark_density": 0.0444,
+          "notes": "Small block; may be figure number, caption, or short label."
+        }
+      ]
+    }
+  ]
+}
