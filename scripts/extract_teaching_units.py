@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from PIL import Image
 
 
 SYSTEM_PROMPT = """你是工笔花鸟临摹教材的图文结构抽取助手。
@@ -124,8 +125,23 @@ def extract_json(text: str) -> dict[str, Any]:
         return json.loads(match.group(0))
 
 
-def call_vision_model(page: dict[str, Any], model: str, base_url: str, api_key: str) -> dict[str, Any]:
-    image_path = Path(page["raw_path"])
+def prepare_model_image(page: dict[str, Any], output_dir: Path, max_side: int) -> Path:
+    source_path = Path(page["raw_path"])
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / f"{page['page_id']}_vision.jpg"
+    with Image.open(source_path).convert("RGB") as img:
+        img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+        img.save(output_path, format="JPEG", quality=88, optimize=True)
+    return output_path
+
+
+def call_vision_model(
+    page: dict[str, Any],
+    model: str,
+    base_url: str,
+    api_key: str,
+    image_path: Path,
+) -> dict[str, Any]:
     payload = {
         "model": model,
         "messages": [
@@ -158,6 +174,7 @@ def main() -> None:
     parser.add_argument("processed_book_dir", type=Path)
     parser.add_argument("--pages", required=True, help="Comma-separated 1-based page numbers, e.g. 18,26,27,30")
     parser.add_argument("--env", type=Path, default=Path(".env"))
+    parser.add_argument("--max-image-side", type=int, default=1600)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -179,6 +196,7 @@ def main() -> None:
     }
     pages = [page for page in load_pages(args.processed_book_dir) if page["page_index"] in selected]
     output_dir = args.processed_book_dir / "ocr"
+    model_image_dir = output_dir / "model_images"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if args.dry_run:
@@ -187,6 +205,7 @@ def main() -> None:
             "base_url": base_url,
             "pages": [page["page_index"] for page in pages],
             "output_dir": str(output_dir),
+            "max_image_side": args.max_image_side,
             "has_api_key": bool(api_key),
         }, ensure_ascii=False, indent=2))
         return
@@ -196,7 +215,14 @@ def main() -> None:
 
     outputs = []
     for page in pages:
-        result = call_vision_model(page, model=model, base_url=base_url, api_key=api_key)
+        image_path = prepare_model_image(page, model_image_dir, args.max_image_side)
+        result = call_vision_model(
+            page,
+            model=model,
+            base_url=base_url,
+            api_key=api_key,
+            image_path=image_path,
+        )
         output_path = output_dir / f"{page['page_id']}_teaching_units.json"
         output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         outputs.append(str(output_path))

@@ -1,6 +1,8 @@
 import json
 
-from scripts.extract_teaching_units import extract_json, normalize_base_url
+from PIL import Image
+
+from scripts.extract_teaching_units import extract_json, normalize_base_url, prepare_model_image
 
 
 def test_normalize_base_url():
@@ -30,3 +32,15 @@ def test_teaching_unit_shape():
     }
     encoded = json.dumps(payload, ensure_ascii=False)
     assert extract_json(encoded)["technique_units"][0]["actions"] == ["罩染"]
+
+
+def test_prepare_model_image(tmp_path):
+    source = tmp_path / "page.jpg"
+    Image.new("RGB", (2400, 1200), "white").save(source)
+    page = {"raw_path": str(source), "page_id": "book_001_page_001"}
+
+    output = prepare_model_image(page, tmp_path / "model_images", max_side=800)
+
+    assert output.exists()
+    with Image.open(output) as img:
+        assert max(img.size) == 800

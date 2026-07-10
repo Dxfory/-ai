@@ -119,7 +119,7 @@
 
 ```bash
 .venv/bin/python scripts/extract_teaching_units.py datasets/processed_books/book_001 --pages 18,26,27,30 --dry-run
-.venv/bin/python scripts/extract_teaching_units.py datasets/processed_books/book_001 --pages 18,26,27,30
+.venv/bin/python scripts/extract_teaching_units.py datasets/processed_books/book_001 --pages 18,26,27,30 --max-image-side 1600
 ```
 
 建议配置：
@@ -131,3 +131,5 @@ TEACHING_VISION_MODEL=gpt-5.5
 ```
 
 脚本输出到 `datasets/processed_books/book_001/ocr/`。这个目录不会提交 Git，因为里面可能包含书籍 OCR 文本和模型抽取结果。第一轮只跑少量页，人工确认抽取结果靠谱后，再扩展到整本书。
+
+默认会先把扫描页压缩到最长边 1600px，再发给视觉模型，避免整页原图过大导致请求过慢或失败。
