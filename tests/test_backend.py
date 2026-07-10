@@ -85,18 +85,6 @@ def test_gongbi_line_draft_practice_flow():
     assert draft["file_url"].endswith(".png")
     assert draft["metadata"]["width"] > 0
 
-    fenran_resp = client.post("/api/v1/color-steps/generate", json={
-        "reference_upload_id": reference["id"],
-        "line_draft_id": draft["id"],
-        "step_type": "fenran",
-        "provider": "local_fenran_preview",
-    })
-    assert fenran_resp.status_code == 200
-    fenran = fenran_resp.json()
-    assert fenran["file_url"].startswith("/uploads/color_steps/")
-    assert fenran["provider"] == "local_fenran_preview"
-    assert fenran["metadata"]["width"] > 0
-
     session_resp = client.post("/api/v1/practice-sessions/", json={
         "reference_upload_id": reference["id"],
         "line_draft_id": draft["id"],
@@ -122,30 +110,6 @@ def test_gongbi_line_draft_practice_flow():
     assert continue_resp.status_code == 200
     updated_session = continue_resp.json()
     assert updated_session["current_step_num"] == 2
-
-
-def test_ai_baimiao_falls_back_to_local_edge(monkeypatch):
-    def fail_ai_baimiao(*args, **kwargs):
-        raise RuntimeError("simulated image api timeout")
-
-    monkeypatch.setattr("backend.routes.practice.generate_ai_baimiao", fail_ai_baimiao)
-    upload_resp = client.post(
-        "/api/v1/uploads/reference",
-        files={"file": ("flower.png", _sample_png_bytes(), "image/png")},
-        data={"notes": "fallback test"},
-    )
-    assert upload_resp.status_code == 200
-    reference = upload_resp.json()
-
-    draft_resp = client.post("/api/v1/line-drafts/generate", json={
-        "reference_upload_id": reference["id"],
-        "provider": "ai_baimiao",
-    })
-    assert draft_resp.status_code == 200
-    draft = draft_resp.json()
-    assert draft["provider"] == "ai_baimiao_fallback_local_edge"
-    assert draft["metadata"]["provider"] == "ai_baimiao_fallback_local_edge"
-    assert "simulated image api timeout" in draft["metadata"]["fallback_reason"]
 
 
 def test_create_artwork():

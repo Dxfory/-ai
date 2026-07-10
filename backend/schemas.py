@@ -66,26 +66,6 @@ class LineDraftSchema(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
 
 
-class ColorStepGenerateRequest(BaseModel):
-    reference_upload_id: str
-    line_draft_id: str
-    step_type: str = "fenran"
-    provider: str = "ai_fenran"
-    prompt: str = ""
-
-
-class GeneratedStepImageSchema(BaseModel):
-    id: str
-    reference_upload_id: str
-    line_draft_id: str
-    step_type: str
-    file_url: str
-    provider: str
-    status: str = "ready"
-    metadata: dict = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=datetime.now)
-
-
 class PracticeSessionCreateRequest(BaseModel):
     reference_upload_id: str
     line_draft_id: str

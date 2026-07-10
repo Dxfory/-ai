@@ -11,8 +11,6 @@ from ..config import settings
 from ..database import get_db
 from ..models import LineDraftModel, PracticeSessionModel, PracticeStepRunModel, ReferenceUploadModel
 from ..schemas import (
-    ColorStepGenerateRequest,
-    GeneratedStepImageSchema,
     LineDraftGenerateRequest,
     LineDraftSchema,
     PracticeSessionCreateRequest,
@@ -20,13 +18,7 @@ from ..schemas import (
     PracticeStepRunSchema,
     ReferenceUploadSchema,
 )
-from ..services.line_draft import (
-    generate_ai_baimiao,
-    generate_ai_fenran,
-    generate_line_draft,
-    generate_local_fenran_preview,
-    generate_overlay,
-)
+from ..services.line_draft import generate_ai_baimiao, generate_line_draft, generate_overlay
 from shared.utils import generate_uuid, validate_image_format
 
 router = APIRouter(prefix="/api/v1", tags=["gongbi-practice"])
@@ -114,32 +106,14 @@ def create_line_draft(req: LineDraftGenerateRequest, db: Session = Depends(get_d
     draft_id = generate_uuid()
     rel_dir = Path("line_drafts")
     output_dir = str(Path(settings.UPLOAD_DIR) / rel_dir)
-    provider_used = req.provider
     try:
         if req.provider == "ai_baimiao":
-            try:
-                result = generate_ai_baimiao(
-                    reference.file_path,
-                    output_dir,
-                    draft_id,
-                    prompt=req.prompt,
-                )
-            except Exception as exc:
-                if os.getenv("BAIMIAO_FALLBACK_LOCAL", "true").lower() not in {"1", "true", "yes"}:
-                    raise
-                result = generate_line_draft(
-                    reference.file_path,
-                    output_dir,
-                    draft_id,
-                    line_strength=req.line_strength,
-                    detail_level=req.detail_level,
-                    preserve_texture=req.preserve_texture,
-                )
-                provider_used = "ai_baimiao_fallback_local_edge"
-                result.parameters = result.parameters | {
-                    "provider": provider_used,
-                    "fallback_reason": f"{type(exc).__name__}: {exc}",
-                }
+            result = generate_ai_baimiao(
+                reference.file_path,
+                output_dir,
+                draft_id,
+                prompt=req.prompt,
+            )
         elif req.provider == "local_edge_preview":
             result = generate_line_draft(
                 reference.file_path,
@@ -163,7 +137,7 @@ def create_line_draft(req: LineDraftGenerateRequest, db: Session = Depends(get_d
         line_strength=req.line_strength,
         detail_level=req.detail_level,
         preserve_texture=req.preserve_texture,
-        provider=provider_used,
+        provider=req.provider,
         metadata_=result.parameters | {"width": result.width, "height": result.height},
     )
     db.add(draft)
@@ -178,55 +152,6 @@ def get_line_draft(draft_id: str, db: Session = Depends(get_db)):
     if not draft:
         raise HTTPException(status_code=404, detail="Line draft not found")
     return _line_draft_schema(draft)
-
-
-@router.post("/color-steps/generate", response_model=GeneratedStepImageSchema)
-def create_color_step_image(req: ColorStepGenerateRequest, db: Session = Depends(get_db)):
-    if req.step_type != "fenran":
-        raise HTTPException(status_code=400, detail="Unsupported color step type")
-
-    reference = db.query(ReferenceUploadModel).filter(ReferenceUploadModel.id == req.reference_upload_id).first()
-    if not reference:
-        raise HTTPException(status_code=404, detail="Reference upload not found")
-    draft = db.query(LineDraftModel).filter(LineDraftModel.id == req.line_draft_id).first()
-    if not draft or draft.reference_upload_id != reference.id:
-        raise HTTPException(status_code=404, detail="Line draft not found for reference")
-
-    step_id = generate_uuid()
-    rel_dir = Path("color_steps")
-    output_dir = str(Path(settings.UPLOAD_DIR) / rel_dir)
-    try:
-        if req.provider == "ai_fenran":
-            result = generate_ai_fenran(
-                reference.file_path,
-                draft.file_path,
-                output_dir,
-                step_id,
-                prompt=req.prompt,
-            )
-        elif req.provider == "local_fenran_preview":
-            result = generate_local_fenran_preview(
-                reference.file_path,
-                draft.file_path,
-                output_dir,
-                step_id,
-            )
-        else:
-            raise HTTPException(status_code=400, detail="Unsupported color step provider")
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Color step generation failed: {exc}") from exc
-
-    return GeneratedStepImageSchema(
-        id=step_id,
-        reference_upload_id=reference.id,
-        line_draft_id=draft.id,
-        step_type=req.step_type,
-        file_url=f"/uploads/{rel_dir.as_posix()}/{step_id}.png",
-        provider=req.provider,
-        metadata=result.parameters | {"width": result.width, "height": result.height},
-    )
 
 
 @router.post("/practice-sessions/", response_model=PracticeSessionSchema)
