@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw
 from fastapi.testclient import TestClient
 from backend.app import app
 from backend.database import init_db
+from backend.services.line_draft import BAIMIAO_PROMPT, _resolve_image_size
 
 init_db()
 client = TestClient(app)
@@ -20,6 +21,22 @@ def test_health():
     data = resp.json()
     assert data["status"] == "ok"
     assert data["server"] == "国画临摹AI教练"
+
+
+def test_baimiao_prompt_forbids_hallucinated_objects():
+    assert "原图没有鸟，就绝对不要画鸟" in BAIMIAO_PROMPT
+    assert "任务不是创作新画" in BAIMIAO_PROMPT
+    assert "输入图中没有的任何对象" in BAIMIAO_PROMPT
+    assert "补全必要结构线" not in BAIMIAO_PROMPT
+    assert "鸟体等" not in BAIMIAO_PROMPT
+
+
+def test_baimiao_auto_size_resolves_to_supported_size(tmp_path, monkeypatch):
+    monkeypatch.setenv("BAIMIAO_IMAGE_SIZE", "auto")
+    image_path = tmp_path / "wide.png"
+    Image.new("RGB", (1200, 800), "white").save(image_path)
+
+    assert _resolve_image_size(str(image_path)) == "1536x1024"
 
 
 def test_create_and_filter_asset():
