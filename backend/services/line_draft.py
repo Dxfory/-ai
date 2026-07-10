@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
-from PIL import Image, ImageFilter, ImageOps
+from PIL import Image, ImageDraw, ImageFilter, ImageOps
 
 
 @dataclass
@@ -78,13 +78,19 @@ BAIMIAO_PROMPT = """请把输入原画转换成中国工笔花鸟白描稿。
 核心目标：
 学习并提取原画中已经存在的作者勾线、墨线、结构线和可见设色边界中的真实结构关系，输出可打印临摹的白底黑线稿。
 
+输入说明：
+如果同时提供两张图，第一张是原画，第二张是本地结构锁定参考图。第二张不代表最终风格，但它锁定构图、画芯边框、枝干走势、花叶位置和主要边界，不得忽略。
+
 必须遵守：
 1. 构图方向、主体位置、对象数量、枝叶走势、花果/鸟体位置必须忠实原图。
-2. 只提取原画里可见的花瓣边线、叶缘、主叶脉、必要侧脉、枝干骨架、果实外轮廓、鸟体外形、羽组边界、遮挡断续线、转折包裹线。
+2. 只提取原画里可见的花瓣边线、叶缘、主叶脉、必要侧脉、枝干骨架、花梗、果实外轮廓、鸟体外形、羽组边界、遮挡断续线、转折包裹线。
 3. 不要发明新枝条、新叶脉、新花瓣、新羽毛、新果实，不要为了好看重新组织画面。
 4. 不要把照片光影、纸纹、扫描阴影、背景纹理、脏点、绢本纹、色块晕染边缘机械转成线。
 5. 线条要符合工笔白描逻辑：骨架线清楚，轮廓线稳定，叶脉和纹理线有取舍，遮挡处允许断线但要笔断意连，疏密和虚实服从原作。
-6. 输出纯白背景、黑色线条，尽量少灰度、少阴影、少噪声。
+6. 如果原画存在圆形、扇面、册页或其他画芯边框，边框属于作品结构，必须保留为完整干净的外轮廓线。
+7. 枝干和花梗是连接全画的骨架，必须完整保留；不能只画花叶而丢掉枝干。
+8. 大花瓣必须保持完整外轮廓和互相遮挡关系，不能缺瓣、断瓣、把花心改成不属于原图的毛刺团。
+9. 输出纯白背景、黑色线条，线条应实、清楚、连续；不要虚线、点线、中空线、灰线、阴影或噪声。
 
 输出一张白底黑线 PNG。"""
 
@@ -152,25 +158,32 @@ def generate_ai_baimiao(
     os.makedirs(output_dir, exist_ok=True)
     output_path = Path(output_dir) / f"{draft_id}.png"
     raw_output_path = Path(output_dir) / f"{draft_id}_raw.png"
+    api_input_path = Path(output_dir) / f"{draft_id}_api_input.jpg"
+    guide_path = Path(output_dir) / f"{draft_id}_structure_guide.png"
+    _prepare_api_image(source_path, str(api_input_path))
+    _make_baimiao_structure_guide(source_path, str(guide_path))
 
-    with open(source_path, "rb") as image_file:
-        files = {"image": (Path(source_path).name, image_file, _guess_mime(source_path))}
-        with httpx.Client(timeout=120) as client:
-            response = client.post(url, headers=headers, data=data, files=files)
-            response.raise_for_status()
-            payload = response.json()
+    with httpx.Client(timeout=_image_timeout_seconds()) as client:
+        payload = _post_baimiao_edit(
+            client=client,
+            url=url,
+            headers=headers,
+            data=data,
+            source_path=str(api_input_path),
+            guide_path=str(guide_path),
+        )
 
-            image_data = payload.get("data", [{}])[0]
-            if image_data.get("b64_json"):
-                raw_output_path.write_bytes(base64.b64decode(image_data["b64_json"]))
-            elif image_data.get("url"):
-                image_response = client.get(image_data["url"])
-                image_response.raise_for_status()
-                raw_output_path.write_bytes(image_response.content)
-            else:
-                raise RuntimeError("Image API did not return b64_json or url")
+        image_data = payload.get("data", [{}])[0]
+        if image_data.get("b64_json"):
+            raw_output_path.write_bytes(base64.b64decode(image_data["b64_json"]))
+        elif image_data.get("url"):
+            image_response = client.get(image_data["url"])
+            image_response.raise_for_status()
+            raw_output_path.write_bytes(image_response.content)
+        else:
+            raise RuntimeError("Image API did not return b64_json or url")
 
-    _clean_ai_line_art(str(raw_output_path), str(output_path))
+    _clean_ai_line_art(str(raw_output_path), str(output_path), original_path=source_path)
     with Image.open(output_path) as img:
         width, height = img.size
     return LineDraftResult(
@@ -183,7 +196,9 @@ def generate_ai_baimiao(
             "base_url": base_url,
             "size": data["size"],
             "prompt": final_prompt,
+            "api_input_path": str(api_input_path),
             "raw_output_path": str(raw_output_path),
+            "structure_guide_path": str(guide_path),
             "cleaned": True,
         },
     )
@@ -224,13 +239,17 @@ def generate_ai_fenran(
     os.makedirs(output_dir, exist_ok=True)
     output_path = Path(output_dir) / f"{step_id}.png"
     raw_output_path = Path(output_dir) / f"{step_id}_raw.png"
+    api_source_path = Path(output_dir) / f"{step_id}_source_api_input.jpg"
+    api_draft_path = Path(output_dir) / f"{step_id}_draft_api_input.png"
+    _prepare_api_image(source_path, str(api_source_path))
+    _prepare_api_image(line_draft_path, str(api_draft_path))
 
-    with open(source_path, "rb") as source_file, open(line_draft_path, "rb") as draft_file:
+    with open(api_source_path, "rb") as source_file, open(api_draft_path, "rb") as draft_file:
         files = [
-            ("image", (Path(source_path).name, source_file, _guess_mime(source_path))),
-            ("image", (Path(line_draft_path).name, draft_file, _guess_mime(line_draft_path))),
+            ("image", (Path(api_source_path).name, source_file, _guess_mime(str(api_source_path)))),
+            ("image", (Path(api_draft_path).name, draft_file, _guess_mime(str(api_draft_path)))),
         ]
-        with httpx.Client(timeout=180) as client:
+        with httpx.Client(timeout=_image_timeout_seconds()) as client:
             response = client.post(url, headers=headers, data=data, files=files)
             response.raise_for_status()
             payload = response.json()
@@ -361,9 +380,98 @@ def _resolve_image_size(source_path: str) -> str:
     return "1024x1024"
 
 
-def _clean_ai_line_art(source_path: str, output_path: str) -> None:
+def _image_timeout_seconds() -> float:
+    return float(os.getenv("BAIMIAO_IMAGE_TIMEOUT_SECONDS", "240"))
+
+
+def _prepare_api_image(source_path: str, output_path: str) -> None:
+    max_side = int(os.getenv("BAIMIAO_API_MAX_IMAGE_SIDE", "1024"))
+    img = ImageOps.exif_transpose(Image.open(source_path)).convert("RGB")
+    img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+    suffix = Path(output_path).suffix.lower()
+    if suffix in {".jpg", ".jpeg"}:
+        img.save(output_path, quality=92, optimize=True)
+    else:
+        img.save(output_path)
+
+
+def _post_baimiao_edit(
+    client: httpx.Client,
+    url: str,
+    headers: dict,
+    data: dict,
+    source_path: str,
+    guide_path: str,
+) -> dict:
+    if os.getenv("BAIMIAO_USE_STRUCTURE_GUIDE", "false").lower() not in {"1", "true", "yes"}:
+        response = _post_single_image_edit(client, url, headers, data, source_path)
+        response.raise_for_status()
+        return response.json()
+
+    try:
+        with open(source_path, "rb") as source_file, open(guide_path, "rb") as guide_file:
+            files = [
+                ("image", (Path(source_path).name, source_file, _guess_mime(source_path))),
+                ("image", (Path(guide_path).name, guide_file, "image/png")),
+            ]
+            response = client.post(url, headers=headers, data=data, files=files)
+    except httpx.HTTPError:
+        response = _post_single_image_edit(client, url, headers, data, source_path)
+    else:
+        if response.status_code in {400, 413, 415, 422}:
+            response = _post_single_image_edit(client, url, headers, data, source_path)
+    response.raise_for_status()
+    return response.json()
+
+
+def _post_single_image_edit(
+    client: httpx.Client,
+    url: str,
+    headers: dict,
+    data: dict,
+    source_path: str,
+) -> httpx.Response:
+    attempts = max(1, int(os.getenv("BAIMIAO_API_RETRIES", "2")))
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            with open(source_path, "rb") as source_file:
+                files = {"image": (Path(source_path).name, source_file, _guess_mime(source_path))}
+                response = client.post(url, headers=headers, data=data, files=files)
+            if response.status_code not in {500, 502, 503, 504, 524} or attempt == attempts - 1:
+                return response
+        except httpx.HTTPError as exc:
+            last_error = exc
+            if attempt == attempts - 1:
+                raise
+    if last_error:
+        raise last_error
+    raise RuntimeError("Image API request failed without a response")
+
+
+def _make_baimiao_structure_guide(source_path: str, output_path: str) -> None:
+    img = Image.open(source_path).convert("RGB")
+    img.thumbnail((1536, 1536), Image.Resampling.LANCZOS)
+    gray = ImageOps.grayscale(img)
+    gray = ImageOps.autocontrast(gray)
+    smooth = gray.filter(ImageFilter.MedianFilter(size=3))
+    edges = smooth.filter(ImageFilter.FIND_EDGES)
+    edges = ImageOps.autocontrast(edges)
+    guide = ImageOps.invert(edges)
+    guide = guide.point(lambda value: 0 if value < 210 else 255)
+    guide = guide.filter(ImageFilter.MinFilter(size=3))
+    guide = _remove_tiny_specks(guide)
+    border = _detect_round_artwork_border(img)
+    if border:
+        guide = guide.convert("L")
+        draw = ImageDraw.Draw(guide)
+        draw.ellipse(border, outline=0, width=max(2, round(min(guide.size) * 0.0025)))
+    guide.save(output_path)
+
+
+def _clean_ai_line_art(source_path: str, output_path: str, original_path: str | None = None) -> None:
     """将 AI 输出里的灰底、渐变和轻微阴影清成白底黑线。"""
-    threshold = int(os.getenv("BAIMIAO_CLEAN_THRESHOLD", "215"))
+    threshold = int(os.getenv("BAIMIAO_CLEAN_THRESHOLD", "225"))
     blur_radius = int(os.getenv("BAIMIAO_BACKGROUND_BLUR", "31"))
     img = Image.open(source_path).convert("L")
     background = img.filter(ImageFilter.GaussianBlur(radius=blur_radius))
@@ -376,7 +484,82 @@ def _clean_ai_line_art(source_path: str, output_path: str) -> None:
         for x in range(width):
             normalized = min(255, int(source_pixels[x, y] * 255 / max(1, background_pixels[x, y])))
             clean_pixels[x, y] = 0 if normalized < threshold else 255
+    if os.getenv("BAIMIAO_SOLIDIFY_LINES", "false").lower() in {"1", "true", "yes"}:
+        clean = _solidify_line_art(clean)
+    if original_path:
+        clean = _restore_round_border_from_original(clean, original_path)
     clean.save(output_path)
+
+
+def _solidify_line_art(img: Image.Image) -> Image.Image:
+    clean = img.convert("L")
+    black = ImageOps.invert(clean)
+    black = black.filter(ImageFilter.MaxFilter(size=3))
+    return ImageOps.invert(black).point(lambda value: 0 if value < 235 else 255)
+
+
+def _remove_tiny_specks(img: Image.Image) -> Image.Image:
+    filtered = img.convert("L").filter(ImageFilter.MedianFilter(size=3))
+    return filtered.point(lambda value: 0 if value < 128 else 255)
+
+
+def _restore_round_border_from_original(clean: Image.Image, original_path: str) -> Image.Image:
+    original = Image.open(original_path).convert("RGB")
+    original.thumbnail(clean.size, Image.Resampling.LANCZOS)
+    border = _detect_round_artwork_border(original)
+    if not border:
+        return clean
+
+    result = clean.convert("L")
+    x_scale = result.width / original.width
+    y_scale = result.height / original.height
+    scaled = (
+        round(border[0] * x_scale),
+        round(border[1] * y_scale),
+        round(border[2] * x_scale),
+        round(border[3] * y_scale),
+    )
+    draw = ImageDraw.Draw(result)
+    draw.ellipse(scaled, outline=0, width=max(2, round(min(result.size) * 0.0025)))
+    return result
+
+
+def _detect_round_artwork_border(img: Image.Image) -> tuple[int, int, int, int] | None:
+    rgb = img.convert("RGB")
+    width, height = rgb.size
+    pixels = rgb.load()
+    sample_step = max(1, min(width, height) // 240)
+    candidates: list[tuple[int, int]] = []
+    for y in range(0, height, sample_step):
+        for x in range(0, width, sample_step):
+            r, g, b = pixels[x, y]
+            if _is_warm_artwork_ground(r, g, b):
+                candidates.append((x, y))
+    if not candidates:
+        return None
+
+    xs = [p[0] for p in candidates]
+    ys = [p[1] for p in candidates]
+    left, right = min(xs), max(xs)
+    top, bottom = min(ys), max(ys)
+    box_w = right - left
+    box_h = bottom - top
+    if box_w < width * 0.55 or box_h < height * 0.55:
+        return None
+    if abs(box_w - box_h) > min(box_w, box_h) * 0.18:
+        return None
+
+    pad = max(2, round(min(width, height) * 0.005))
+    return (
+        max(0, left - pad),
+        max(0, top - pad),
+        min(width - 1, right + pad),
+        min(height - 1, bottom + pad),
+    )
+
+
+def _is_warm_artwork_ground(r: int, g: int, b: int) -> bool:
+    return r > 135 and g > 95 and b < 135 and r > b + 35 and g > b + 10
 
 
 def _normalize_step_image(source_path: str, output_path: str) -> None:
