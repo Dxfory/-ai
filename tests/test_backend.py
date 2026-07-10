@@ -1,9 +1,11 @@
 """backend API 测试 (使用 TestClient)"""
 
+import io
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 os.chdir(os.path.join(os.path.dirname(__file__), ".."))
 
+from PIL import Image, ImageDraw
 from fastapi.testclient import TestClient
 from backend.app import app
 from backend.database import Base, engine
@@ -47,6 +49,67 @@ def test_create_and_filter_asset():
     assert list_resp.status_code == 200
     assets = list_resp.json()
     assert any(asset["id"] == data["id"] for asset in assets)
+
+
+def _sample_png_bytes():
+    img = Image.new("RGB", (320, 240), "white")
+    draw = ImageDraw.Draw(img)
+    draw.ellipse((70, 40, 180, 150), outline="black", width=4)
+    draw.line((180, 130, 250, 210), fill="black", width=4)
+    draw.line((115, 150, 92, 220), fill="black", width=3)
+    stream = io.BytesIO()
+    img.save(stream, format="PNG")
+    stream.seek(0)
+    return stream.getvalue()
+
+
+def test_gongbi_line_draft_practice_flow():
+    image_bytes = _sample_png_bytes()
+    upload_resp = client.post(
+        "/api/v1/uploads/reference",
+        files={"file": ("flower.png", image_bytes, "image/png")},
+        data={"notes": "simple flower"},
+    )
+    assert upload_resp.status_code == 200
+    reference = upload_resp.json()
+    assert reference["file_url"].startswith("/uploads/references/")
+
+    draft_resp = client.post("/api/v1/line-drafts/generate", json={
+        "reference_upload_id": reference["id"],
+        "line_strength": 3,
+        "detail_level": 3,
+        "preserve_texture": True,
+    })
+    assert draft_resp.status_code == 200
+    draft = draft_resp.json()
+    assert draft["file_url"].endswith(".png")
+    assert draft["metadata"]["width"] > 0
+
+    session_resp = client.post("/api/v1/practice-sessions/", json={
+        "reference_upload_id": reference["id"],
+        "line_draft_id": draft["id"],
+        "title": "测试工笔花鸟临摹",
+    })
+    assert session_resp.status_code == 200
+    session = session_resp.json()
+    assert len(session["steps"]) == 6
+    assert session["steps"][0]["title"] == "白描稿与构图定位"
+
+    step_id = session["steps"][0]["id"]
+    submission_resp = client.post(
+        f"/api/v1/practice-steps/{step_id}/submission",
+        files={"file": ("submission.png", image_bytes, "image/png")},
+    )
+    assert submission_resp.status_code == 200
+    step = submission_resp.json()
+    assert step["status"] == "review"
+    assert step["submission_image_url"].startswith("/uploads/practice_submissions/")
+    assert step["overlay_image_url"].startswith("/uploads/overlays/")
+
+    continue_resp = client.post(f"/api/v1/practice-steps/{step_id}/continue")
+    assert continue_resp.status_code == 200
+    updated_session = continue_resp.json()
+    assert updated_session["current_step_num"] == 2
 
 
 def test_create_artwork():

@@ -71,6 +71,57 @@ CREATE TABLE IF NOT EXISTS error_profiles (
     last_updated TIMESTAMP DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS reference_uploads (
+    id VARCHAR(32) PRIMARY KEY,
+    original_filename VARCHAR(255) NOT NULL,
+    file_path TEXT NOT NULL,
+    file_url TEXT NOT NULL,
+    consent_scope VARCHAR(64) DEFAULT 'personal_analysis',
+    notes TEXT DEFAULT '',
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS line_drafts (
+    id VARCHAR(32) PRIMARY KEY,
+    reference_upload_id VARCHAR(32) REFERENCES reference_uploads(id),
+    file_path TEXT NOT NULL,
+    file_url TEXT NOT NULL,
+    line_strength INTEGER DEFAULT 3,
+    detail_level INTEGER DEFAULT 3,
+    preserve_texture BOOLEAN DEFAULT TRUE,
+    status VARCHAR(32) DEFAULT 'ready',
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS practice_sessions (
+    id VARCHAR(32) PRIMARY KEY,
+    reference_upload_id VARCHAR(32) REFERENCES reference_uploads(id),
+    line_draft_id VARCHAR(32) REFERENCES line_drafts(id),
+    title VARCHAR(255) NOT NULL,
+    status VARCHAR(32) DEFAULT 'active',
+    current_step_num INTEGER DEFAULT 1,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS practice_step_runs (
+    id VARCHAR(32) PRIMARY KEY,
+    session_id VARCHAR(32) REFERENCES practice_sessions(id),
+    step_num INTEGER NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    instruction TEXT NOT NULL,
+    checklist JSONB DEFAULT '[]',
+    common_mistakes JSONB DEFAULT '[]',
+    status VARCHAR(32) DEFAULT 'pending',
+    submission_image_url TEXT DEFAULT '',
+    submission_image_path TEXT DEFAULT '',
+    overlay_image_url TEXT DEFAULT '',
+    overlay_image_path TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
 CREATE INDEX idx_courses_artwork ON courses(artwork_id);
 CREATE INDEX idx_assets_risk_level ON assets(risk_level);
 CREATE INDEX idx_assets_display_allowed ON assets(display_allowed);
@@ -79,3 +130,6 @@ CREATE INDEX idx_steps_course ON steps(course_id);
 CREATE INDEX idx_submissions_step ON submissions(step_id);
 CREATE INDEX idx_submissions_user ON submissions(user_id);
 CREATE INDEX idx_error_profiles_user ON error_profiles(user_id);
+CREATE INDEX idx_line_drafts_reference ON line_drafts(reference_upload_id);
+CREATE INDEX idx_practice_sessions_reference ON practice_sessions(reference_upload_id);
+CREATE INDEX idx_practice_step_runs_session ON practice_step_runs(session_id);

@@ -87,3 +87,66 @@ class ErrorProfileModel(Base):
     frequency = Column(Integer, default=0)
     trend = Column(String, default="stable")
     last_updated = Column(DateTime, default=datetime.now)
+
+
+class ReferenceUploadModel(Base):
+    __tablename__ = "reference_uploads"
+    id = Column(String, primary_key=True)
+    original_filename = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    file_url = Column(String, nullable=False)
+    consent_scope = Column(String, default="personal_analysis")
+    notes = Column(String, default="")
+    metadata_ = Column("metadata", JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.now)
+    line_drafts = relationship("LineDraftModel", back_populates="reference")
+    practice_sessions = relationship("PracticeSessionModel", back_populates="reference")
+
+
+class LineDraftModel(Base):
+    __tablename__ = "line_drafts"
+    id = Column(String, primary_key=True)
+    reference_upload_id = Column(String, ForeignKey("reference_uploads.id"), nullable=False)
+    file_path = Column(String, nullable=False)
+    file_url = Column(String, nullable=False)
+    line_strength = Column(Integer, default=3)
+    detail_level = Column(Integer, default=3)
+    preserve_texture = Column(Boolean, default=True)
+    status = Column(String, default="ready")
+    metadata_ = Column("metadata", JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.now)
+    reference = relationship("ReferenceUploadModel", back_populates="line_drafts")
+    practice_sessions = relationship("PracticeSessionModel", back_populates="line_draft")
+
+
+class PracticeSessionModel(Base):
+    __tablename__ = "practice_sessions"
+    id = Column(String, primary_key=True)
+    reference_upload_id = Column(String, ForeignKey("reference_uploads.id"), nullable=False)
+    line_draft_id = Column(String, ForeignKey("line_drafts.id"), nullable=False)
+    title = Column(String, nullable=False)
+    status = Column(String, default="active")
+    current_step_num = Column(Integer, default=1)
+    created_at = Column(DateTime, default=datetime.now)
+    reference = relationship("ReferenceUploadModel", back_populates="practice_sessions")
+    line_draft = relationship("LineDraftModel", back_populates="practice_sessions")
+    step_runs = relationship("PracticeStepRunModel", back_populates="session", order_by="PracticeStepRunModel.step_num")
+
+
+class PracticeStepRunModel(Base):
+    __tablename__ = "practice_step_runs"
+    id = Column(String, primary_key=True)
+    session_id = Column(String, ForeignKey("practice_sessions.id"), nullable=False)
+    step_num = Column(Integer, nullable=False)
+    title = Column(String, nullable=False)
+    instruction = Column(String, nullable=False)
+    checklist = Column(JSON, default=list)
+    common_mistakes = Column(JSON, default=list)
+    status = Column(String, default="pending")
+    submission_image_url = Column(String, default="")
+    submission_image_path = Column(String, default="")
+    overlay_image_url = Column(String, default="")
+    overlay_image_path = Column(String, default="")
+    notes = Column(String, default="")
+    updated_at = Column(DateTime, default=datetime.now)
+    session = relationship("PracticeSessionModel", back_populates="step_runs")

@@ -1,12 +1,16 @@
 ﻿"""FastAPI 应用入口 - 国画临摹 AI 教练"""
 
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .database import init_db
-from .routes import artworks, assets, courses, submissions
+from .routes import artworks, assets, courses, practice, submissions
 from .schemas import HealthResponse
+
+os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -24,7 +28,10 @@ app.add_middleware(
 app.include_router(artworks.router)
 app.include_router(assets.router)
 app.include_router(courses.router)
+app.include_router(practice.router)
 app.include_router(submissions.router)
+app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
+app.mount("/app", StaticFiles(directory="frontend", html=True), name="frontend")
 
 
 @app.on_event("startup")
@@ -50,6 +57,7 @@ def root():
             "artworks": "/api/v1/artworks/",
             "assets": "/api/v1/assets/",
             "courses": "/api/v1/courses/generate",
+            "practice": "/app/",
             "submissions": "/api/v1/submissions/",
         }
     }

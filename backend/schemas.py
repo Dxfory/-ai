@@ -34,6 +34,66 @@ class AssetSchema(AssetCreateRequest):
     created_at: datetime = Field(default_factory=datetime.now)
 
 
+class ReferenceUploadSchema(BaseModel):
+    id: str
+    original_filename: str
+    file_url: str
+    consent_scope: str = "personal_analysis"
+    notes: str = ""
+    metadata: dict = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=datetime.now)
+
+
+class LineDraftGenerateRequest(BaseModel):
+    reference_upload_id: str
+    line_strength: int = Field(default=3, ge=1, le=5)
+    detail_level: int = Field(default=3, ge=1, le=5)
+    preserve_texture: bool = True
+
+
+class LineDraftSchema(BaseModel):
+    id: str
+    reference_upload_id: str
+    file_url: str
+    line_strength: int = 3
+    detail_level: int = 3
+    preserve_texture: bool = True
+    status: str = "ready"
+    metadata: dict = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=datetime.now)
+
+
+class PracticeSessionCreateRequest(BaseModel):
+    reference_upload_id: str
+    line_draft_id: str
+    title: str = "工笔花鸟白描临摹"
+
+
+class PracticeStepRunSchema(BaseModel):
+    id: str
+    session_id: str
+    step_num: int
+    title: str
+    instruction: str
+    checklist: List[str] = Field(default_factory=list)
+    common_mistakes: List[str] = Field(default_factory=list)
+    status: str = "pending"
+    submission_image_url: str = ""
+    overlay_image_url: str = ""
+    notes: str = ""
+
+
+class PracticeSessionSchema(BaseModel):
+    id: str
+    reference_upload_id: str
+    line_draft_id: str
+    title: str
+    status: str = "active"
+    current_step_num: int = 1
+    steps: List[PracticeStepRunSchema] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=datetime.now)
+
+
 class StepSchema(BaseModel):
     id: str
     course_id: str
