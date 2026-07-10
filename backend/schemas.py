@@ -49,6 +49,8 @@ class LineDraftGenerateRequest(BaseModel):
     line_strength: int = Field(default=3, ge=1, le=5)
     detail_level: int = Field(default=3, ge=1, le=5)
     preserve_texture: bool = True
+    provider: str = "local_edge_preview"
+    prompt: str = ""
 
 
 class LineDraftSchema(BaseModel):
@@ -58,6 +60,7 @@ class LineDraftSchema(BaseModel):
     line_strength: int = 3
     detail_level: int = 3
     preserve_texture: bool = True
+    provider: str = "local_edge_preview"
     status: str = "ready"
     metadata: dict = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=datetime.now)

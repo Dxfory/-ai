@@ -8,9 +8,9 @@ os.chdir(os.path.join(os.path.dirname(__file__), ".."))
 from PIL import Image, ImageDraw
 from fastapi.testclient import TestClient
 from backend.app import app
-from backend.database import Base, engine
+from backend.database import init_db
 
-Base.metadata.create_all(bind=engine)
+init_db()
 client = TestClient(app)
 
 

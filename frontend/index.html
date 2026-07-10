@@ -14,7 +14,7 @@
             <span class="mark">线</span>
             <div>
               <h1>工笔花鸟白描临摹</h1>
-              <p>上传参考图，生成白描稿，然后一步一步练习。</p>
+              <p>上传参考图，生成工笔白描稿，然后一步一步练习。</p>
             </div>
           </div>
 
@@ -27,6 +27,11 @@
           </form>
 
           <form id="draftForm" class="control-group" hidden>
+            <label class="label" for="provider">生成方式</label>
+            <select id="provider">
+              <option value="ai_baimiao">AI 白描稿</option>
+              <option value="local_edge_preview">本地边缘预览</option>
+            </select>
             <label class="label" for="lineStrength">线条强度 <span id="lineStrengthValue">3</span></label>
             <input id="lineStrength" type="range" min="1" max="5" value="3" />
             <label class="label" for="detailLevel">细节保留 <span id="detailLevelValue">3</span></label>
@@ -35,7 +40,7 @@
               <input id="preserveTexture" type="checkbox" checked />
               保留花瓣、叶脉或羽毛纹理
             </label>
-            <button type="submit">生成白描稿</button>
+            <button type="submit">生成线稿</button>
           </form>
 
           <button id="createSessionButton" hidden>创建分步练习</button>

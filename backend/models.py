@@ -112,6 +112,7 @@ class LineDraftModel(Base):
     line_strength = Column(Integer, default=3)
     detail_level = Column(Integer, default=3)
     preserve_texture = Column(Boolean, default=True)
+    provider = Column(String, default="local_edge_preview")
     status = Column(String, default="ready")
     metadata_ = Column("metadata", JSON, default=dict)
     created_at = Column(DateTime, default=datetime.now)

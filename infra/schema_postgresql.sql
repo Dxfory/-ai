@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS line_drafts (
     line_strength INTEGER DEFAULT 3,
     detail_level INTEGER DEFAULT 3,
     preserve_texture BOOLEAN DEFAULT TRUE,
+    provider VARCHAR(64) DEFAULT 'local_edge_preview',
     status VARCHAR(32) DEFAULT 'ready',
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP DEFAULT NOW()

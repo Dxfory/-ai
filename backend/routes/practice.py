@@ -18,7 +18,7 @@ from ..schemas import (
     PracticeStepRunSchema,
     ReferenceUploadSchema,
 )
-from ..services.line_draft import generate_line_draft, generate_overlay
+from ..services.line_draft import generate_ai_baimiao, generate_line_draft, generate_overlay
 from shared.utils import generate_uuid, validate_image_format
 
 router = APIRouter(prefix="/api/v1", tags=["gongbi-practice"])
@@ -105,14 +105,30 @@ def create_line_draft(req: LineDraftGenerateRequest, db: Session = Depends(get_d
 
     draft_id = generate_uuid()
     rel_dir = Path("line_drafts")
-    result = generate_line_draft(
-        reference.file_path,
-        str(Path(settings.UPLOAD_DIR) / rel_dir),
-        draft_id,
-        line_strength=req.line_strength,
-        detail_level=req.detail_level,
-        preserve_texture=req.preserve_texture,
-    )
+    output_dir = str(Path(settings.UPLOAD_DIR) / rel_dir)
+    try:
+        if req.provider == "ai_baimiao":
+            result = generate_ai_baimiao(
+                reference.file_path,
+                output_dir,
+                draft_id,
+                prompt=req.prompt,
+            )
+        elif req.provider == "local_edge_preview":
+            result = generate_line_draft(
+                reference.file_path,
+                output_dir,
+                draft_id,
+                line_strength=req.line_strength,
+                detail_level=req.detail_level,
+                preserve_texture=req.preserve_texture,
+            )
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported line draft provider")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Line draft generation failed: {exc}") from exc
     draft = LineDraftModel(
         id=draft_id,
         reference_upload_id=reference.id,
@@ -121,6 +137,7 @@ def create_line_draft(req: LineDraftGenerateRequest, db: Session = Depends(get_d
         line_strength=req.line_strength,
         detail_level=req.detail_level,
         preserve_texture=req.preserve_texture,
+        provider=req.provider,
         metadata_=result.parameters | {"width": result.width, "height": result.height},
     )
     db.add(draft)
@@ -274,6 +291,7 @@ def _line_draft_schema(draft: LineDraftModel) -> LineDraftSchema:
         line_strength=draft.line_strength,
         detail_level=draft.detail_level,
         preserve_texture=draft.preserve_texture,
+        provider=draft.provider,
         status=draft.status,
         metadata=draft.metadata_ or {},
         created_at=draft.created_at,
