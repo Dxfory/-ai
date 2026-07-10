@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>工笔花鸟白描临摹</title>
+    <title>原画转工笔白描</title>
     <link rel="stylesheet" href="/app/styles.css" />
   </head>
   <body>
@@ -13,44 +13,28 @@
           <div class="brand">
             <span class="mark">线</span>
             <div>
-              <h1>工笔花鸟白描临摹</h1>
-              <p>上传参考图，生成工笔白描稿，然后一步一步练习。</p>
+              <h1>原画转工笔白描</h1>
+              <p>上传原画，输出白底黑线白描稿。</p>
             </div>
           </div>
 
           <form id="uploadForm" class="control-group">
-            <label class="label" for="referenceFile">参考图</label>
+            <label class="label" for="referenceFile">原画图片</label>
             <input id="referenceFile" type="file" accept="image/*" required />
-            <label class="label" for="notes">备注</label>
-            <input id="notes" type="text" placeholder="例如：单花、鸟局部、叶组" />
-            <button type="submit">上传参考图</button>
+            <button type="submit">上传原画</button>
           </form>
 
           <form id="draftForm" class="control-group" hidden>
-            <label class="label" for="provider">生成方式</label>
-            <select id="provider">
-              <option value="ai_baimiao">AI 白描稿</option>
-              <option value="local_edge_preview">本地边缘预览</option>
-            </select>
-            <label class="label" for="lineStrength">线条强度 <span id="lineStrengthValue">3</span></label>
-            <input id="lineStrength" type="range" min="1" max="5" value="3" />
-            <label class="label" for="detailLevel">细节保留 <span id="detailLevelValue">3</span></label>
-            <input id="detailLevel" type="range" min="1" max="5" value="3" />
-            <label class="checkbox">
-              <input id="preserveTexture" type="checkbox" checked />
-              保留花瓣、叶脉或羽毛纹理
-            </label>
-            <button type="submit">生成线稿</button>
+            <button type="submit">生成白描稿</button>
           </form>
 
-          <button id="createSessionButton" hidden>创建分步练习</button>
-          <p id="status" class="status">等待上传参考图。</p>
+          <p id="status" class="status">等待上传原画。</p>
         </aside>
 
         <section class="stage">
           <div class="preview-grid">
             <figure>
-              <figcaption>参考图</figcaption>
+              <figcaption>原画</figcaption>
               <img id="referencePreview" alt="" />
             </figure>
             <figure>
@@ -59,48 +43,6 @@
               <a id="downloadDraft" class="download" href="#" download hidden>下载白描稿</a>
             </figure>
           </div>
-
-          <section id="practiceArea" class="practice" hidden>
-            <div class="step-header">
-              <div>
-                <span id="stepMeta" class="eyebrow"></span>
-                <h2 id="stepTitle"></h2>
-              </div>
-              <div class="step-actions">
-                <button id="retryButton" type="button">我想再改一下</button>
-                <button id="continueButton" type="button">继续下一步</button>
-              </div>
-            </div>
-
-            <p id="stepInstruction" class="instruction"></p>
-            <div class="lists">
-              <div>
-                <h3>自检</h3>
-                <ul id="checklist"></ul>
-              </div>
-              <div>
-                <h3>常见问题</h3>
-                <ul id="mistakes"></ul>
-              </div>
-            </div>
-
-            <form id="submissionForm" class="submission">
-              <label class="label" for="submissionFile">上传本步骤作业</label>
-              <input id="submissionFile" type="file" accept="image/*" required />
-              <button type="submit">上传并生成叠图</button>
-            </form>
-
-            <div class="preview-grid">
-              <figure>
-                <figcaption>本步作业</figcaption>
-                <img id="submissionPreview" alt="" />
-              </figure>
-              <figure>
-                <figcaption>叠图对照</figcaption>
-                <img id="overlayPreview" alt="" />
-              </figure>
-            </div>
-          </section>
         </section>
       </section>
     </main>
