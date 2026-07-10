@@ -114,14 +114,32 @@ def create_line_draft(req: LineDraftGenerateRequest, db: Session = Depends(get_d
     draft_id = generate_uuid()
     rel_dir = Path("line_drafts")
     output_dir = str(Path(settings.UPLOAD_DIR) / rel_dir)
+    provider_used = req.provider
     try:
         if req.provider == "ai_baimiao":
-            result = generate_ai_baimiao(
-                reference.file_path,
-                output_dir,
-                draft_id,
-                prompt=req.prompt,
-            )
+            try:
+                result = generate_ai_baimiao(
+                    reference.file_path,
+                    output_dir,
+                    draft_id,
+                    prompt=req.prompt,
+                )
+            except Exception as exc:
+                if os.getenv("BAIMIAO_FALLBACK_LOCAL", "true").lower() not in {"1", "true", "yes"}:
+                    raise
+                result = generate_line_draft(
+                    reference.file_path,
+                    output_dir,
+                    draft_id,
+                    line_strength=req.line_strength,
+                    detail_level=req.detail_level,
+                    preserve_texture=req.preserve_texture,
+                )
+                provider_used = "ai_baimiao_fallback_local_edge"
+                result.parameters = result.parameters | {
+                    "provider": provider_used,
+                    "fallback_reason": f"{type(exc).__name__}: {exc}",
+                }
         elif req.provider == "local_edge_preview":
             result = generate_line_draft(
                 reference.file_path,
@@ -145,7 +163,7 @@ def create_line_draft(req: LineDraftGenerateRequest, db: Session = Depends(get_d
         line_strength=req.line_strength,
         detail_level=req.detail_level,
         preserve_texture=req.preserve_texture,
-        provider=req.provider,
+        provider=provider_used,
         metadata_=result.parameters | {"width": result.width, "height": result.height},
     )
     db.add(draft)

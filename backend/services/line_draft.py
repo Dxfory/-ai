@@ -381,7 +381,7 @@ def _resolve_image_size(source_path: str) -> str:
 
 
 def _image_timeout_seconds() -> float:
-    return float(os.getenv("BAIMIAO_IMAGE_TIMEOUT_SECONDS", "240"))
+    return float(os.getenv("BAIMIAO_IMAGE_TIMEOUT_SECONDS", "120"))
 
 
 def _prepare_api_image(source_path: str, output_path: str) -> None:
@@ -431,7 +431,7 @@ def _post_single_image_edit(
     data: dict,
     source_path: str,
 ) -> httpx.Response:
-    attempts = max(1, int(os.getenv("BAIMIAO_API_RETRIES", "2")))
+    attempts = max(1, int(os.getenv("BAIMIAO_API_RETRIES", "1")))
     last_error: Exception | None = None
     for attempt in range(attempts):
         try:

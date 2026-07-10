@@ -124,6 +124,30 @@ def test_gongbi_line_draft_practice_flow():
     assert updated_session["current_step_num"] == 2
 
 
+def test_ai_baimiao_falls_back_to_local_edge(monkeypatch):
+    def fail_ai_baimiao(*args, **kwargs):
+        raise RuntimeError("simulated image api timeout")
+
+    monkeypatch.setattr("backend.routes.practice.generate_ai_baimiao", fail_ai_baimiao)
+    upload_resp = client.post(
+        "/api/v1/uploads/reference",
+        files={"file": ("flower.png", _sample_png_bytes(), "image/png")},
+        data={"notes": "fallback test"},
+    )
+    assert upload_resp.status_code == 200
+    reference = upload_resp.json()
+
+    draft_resp = client.post("/api/v1/line-drafts/generate", json={
+        "reference_upload_id": reference["id"],
+        "provider": "ai_baimiao",
+    })
+    assert draft_resp.status_code == 200
+    draft = draft_resp.json()
+    assert draft["provider"] == "ai_baimiao_fallback_local_edge"
+    assert draft["metadata"]["provider"] == "ai_baimiao_fallback_local_edge"
+    assert "simulated image api timeout" in draft["metadata"]["fallback_reason"]
+
+
 def test_create_artwork():
     resp = client.post("/api/v1/artworks/", json={
         "title": "出水芙蓉图", "genre": "flower_bird",
