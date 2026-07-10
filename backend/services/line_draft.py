@@ -110,11 +110,12 @@ def generate_ai_baimiao(
     data = {
         "model": model,
         "prompt": final_prompt,
-        "size": os.getenv("BAIMIAO_IMAGE_SIZE", "1024x1024"),
+        "size": _resolve_image_size(source_path),
     }
 
     os.makedirs(output_dir, exist_ok=True)
     output_path = Path(output_dir) / f"{draft_id}.png"
+    raw_output_path = Path(output_dir) / f"{draft_id}_raw.png"
 
     with open(source_path, "rb") as image_file:
         files = {"image": (Path(source_path).name, image_file, _guess_mime(source_path))}
@@ -125,14 +126,15 @@ def generate_ai_baimiao(
 
             image_data = payload.get("data", [{}])[0]
             if image_data.get("b64_json"):
-                output_path.write_bytes(base64.b64decode(image_data["b64_json"]))
+                raw_output_path.write_bytes(base64.b64decode(image_data["b64_json"]))
             elif image_data.get("url"):
                 image_response = client.get(image_data["url"])
                 image_response.raise_for_status()
-                output_path.write_bytes(image_response.content)
+                raw_output_path.write_bytes(image_response.content)
             else:
                 raise RuntimeError("Image API did not return b64_json or url")
 
+    _clean_ai_line_art(str(raw_output_path), str(output_path))
     with Image.open(output_path) as img:
         width, height = img.size
     return LineDraftResult(
@@ -143,7 +145,10 @@ def generate_ai_baimiao(
             "provider": "ai_baimiao",
             "model": model,
             "base_url": base_url,
+            "size": data["size"],
             "prompt": final_prompt,
+            "raw_output_path": str(raw_output_path),
+            "cleaned": True,
         },
     )
 
@@ -185,3 +190,35 @@ def _guess_mime(path: str) -> str:
     if ext == "webp":
         return "image/webp"
     return "image/png"
+
+
+def _resolve_image_size(source_path: str) -> str:
+    requested = os.getenv("BAIMIAO_IMAGE_SIZE", "auto").strip()
+    if requested and requested.lower() != "auto":
+        return requested
+    with Image.open(source_path) as img:
+        width, height = img.size
+    ratio = width / max(1, height)
+    if ratio >= 1.2:
+        return "1536x1024"
+    if ratio <= 0.83:
+        return "1024x1536"
+    return "1024x1024"
+
+
+def _clean_ai_line_art(source_path: str, output_path: str) -> None:
+    """将 AI 输出里的灰底、渐变和轻微阴影清成白底黑线。"""
+    threshold = int(os.getenv("BAIMIAO_CLEAN_THRESHOLD", "215"))
+    blur_radius = int(os.getenv("BAIMIAO_BACKGROUND_BLUR", "31"))
+    img = Image.open(source_path).convert("L")
+    background = img.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+    source_pixels = img.load()
+    background_pixels = background.load()
+    width, height = img.size
+    clean = Image.new("L", img.size, 255)
+    clean_pixels = clean.load()
+    for y in range(height):
+        for x in range(width):
+            normalized = min(255, int(source_pixels[x, y] * 255 / max(1, background_pixels[x, y])))
+            clean_pixels[x, y] = 0 if normalized < threshold else 255
+    clean.save(output_path)

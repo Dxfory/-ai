@@ -11,3 +11,10 @@ uploads/
 .DS_Store
 .vscode/
 .idea/
+
+# Teaching-book source material can contain copyrighted scans.
+datasets/raw_books/*
+!datasets/raw_books/.gitkeep
+datasets/processed_books/**/contact_sheet.jpg
+datasets/processed_books/**/crops/
+datasets/processed_books/**/ocr/

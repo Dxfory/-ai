@@ -1,0 +1,375 @@
+{
+  "book_id": "book_001",
+  "purpose": "Bind full-page scans to OCR text, figure regions, figure numbers, and gongbi technique steps.",
+  "pages": [
+    {
+      "page_id": "book_001_page_001",
+      "page_index": 1,
+      "image": "datasets/raw_books/book_001/page_001.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_002",
+      "page_index": 2,
+      "image": "datasets/raw_books/book_001/page_002.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_003",
+      "page_index": 3,
+      "image": "datasets/raw_books/book_001/page_003.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_004",
+      "page_index": 4,
+      "image": "datasets/raw_books/book_001/page_004.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_005",
+      "page_index": 5,
+      "image": "datasets/raw_books/book_001/page_005.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_006",
+      "page_index": 6,
+      "image": "datasets/raw_books/book_001/page_006.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_007",
+      "page_index": 7,
+      "image": "datasets/raw_books/book_001/page_007.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_008",
+      "page_index": 8,
+      "image": "datasets/raw_books/book_001/page_008.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_009",
+      "page_index": 9,
+      "image": "datasets/raw_books/book_001/page_009.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_010",
+      "page_index": 10,
+      "image": "datasets/raw_books/book_001/page_010.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_011",
+      "page_index": 11,
+      "image": "datasets/raw_books/book_001/page_011.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_012",
+      "page_index": 12,
+      "image": "datasets/raw_books/book_001/page_012.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_013",
+      "page_index": 13,
+      "image": "datasets/raw_books/book_001/page_013.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_014",
+      "page_index": 14,
+      "image": "datasets/raw_books/book_001/page_014.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_015",
+      "page_index": 15,
+      "image": "datasets/raw_books/book_001/page_015.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_016",
+      "page_index": 16,
+      "image": "datasets/raw_books/book_001/page_016.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_017",
+      "page_index": 17,
+      "image": "datasets/raw_books/book_001/page_017.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_018",
+      "page_index": 18,
+      "image": "datasets/raw_books/book_001/page_018.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_019",
+      "page_index": 19,
+      "image": "datasets/raw_books/book_001/page_019.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_020",
+      "page_index": 20,
+      "image": "datasets/raw_books/book_001/page_020.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_021",
+      "page_index": 21,
+      "image": "datasets/raw_books/book_001/page_021.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_022",
+      "page_index": 22,
+      "image": "datasets/raw_books/book_001/page_022.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_023",
+      "page_index": 23,
+      "image": "datasets/raw_books/book_001/page_023.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_024",
+      "page_index": 24,
+      "image": "datasets/raw_books/book_001/page_024.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_025",
+      "page_index": 25,
+      "image": "datasets/raw_books/book_001/page_025.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_026",
+      "page_index": 26,
+      "image": "datasets/raw_books/book_001/page_026.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_027",
+      "page_index": 27,
+      "image": "datasets/raw_books/book_001/page_027.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_028",
+      "page_index": 28,
+      "image": "datasets/raw_books/book_001/page_028.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_029",
+      "page_index": 29,
+      "image": "datasets/raw_books/book_001/page_029.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_030",
+      "page_index": 30,
+      "image": "datasets/raw_books/book_001/page_030.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_031",
+      "page_index": 31,
+      "image": "datasets/raw_books/book_001/page_031.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_032",
+      "page_index": 32,
+      "image": "datasets/raw_books/book_001/page_032.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    },
+    {
+      "page_id": "book_001_page_033",
+      "page_index": 33,
+      "image": "datasets/raw_books/book_001/page_033.jpg",
+      "ocr_text": "",
+      "figures": [],
+      "text_blocks": [],
+      "form_logic_units": [],
+      "technique_units": []
+    }
+  ],
+  "figure_schema": {
+    "figure_no": "图9",
+    "bbox": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "role": "reference|baimiao|gouxian|fenran|zhaoran|tiran|done|comparison|unknown",
+    "step_order": null,
+    "caption": "",
+    "linked_text_block_ids": []
+  },
+  "form_logic_unit_schema": {
+    "object": "leaf|flower|branch|bird|fruit|insect|other",
+    "real_world_reference": "",
+    "structural_observation": "",
+    "artistic_transformation": "",
+    "line_logic": "",
+    "linked_figure_nos": [],
+    "source_text": ""
+  },
+  "technique_unit_schema": {
+    "step_name": "",
+    "step_order": null,
+    "objects": [
+      "flower",
+      "leaf",
+      "branch",
+      "bird",
+      "fruit"
+    ],
+    "materials": [],
+    "colors": [],
+    "actions": [],
+    "warnings": [],
+    "source_text": "",
+    "linked_figure_nos": []
+  }
+}

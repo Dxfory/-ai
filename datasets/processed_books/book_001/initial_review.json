@@ -1,0 +1,44 @@
+{
+  "book_id": "book_001",
+  "source": "扫描分步训练.zip",
+  "review_status": "initial_visual_review",
+  "pages": [
+    {
+      "page_range": "001-017",
+      "observed_role": "finished_artwork_and_local_process_examples",
+      "notes": "桃、枇杷等花鸟/果实题材的作品整图、局部对照、白描或浅色线稿、初步设色步骤混合出现。适合后续抽取作品整体构图、局部对象和阶段图之间的关系。"
+    },
+    {
+      "page_range": "018",
+      "observed_role": "form_logic_and_real_world_reference",
+      "notes": "页面包含作者简介、作品形理特点、画中香瓜/叶子/螽斯与实物照片对照，以及图号引用。训练重点应是形态观察、真实物象到画面取舍、局部图文绑定。"
+    },
+    {
+      "page_range": "019-024",
+      "observed_role": "baimiao_and_coloring_sequence",
+      "notes": "香瓜草虫题材的白描稿、成图和局部设色页连续出现。适合验证整图白描、局部设色步骤和文字技法说明能否串成一个教学流程。"
+    },
+    {
+      "page_range": "025-026",
+      "observed_role": "new_artwork_and_form_logic",
+      "notes": "石榴、葡萄、柑橘等题材的作品页和形理说明页，包含画中果实/枝叶与实物照片对比。需要抽取果实形态、枝叶走势、画面取舍和物象组织方式。"
+    },
+    {
+      "page_range": "027",
+      "observed_role": "baimiao_logic",
+      "notes": "石榴葡萄题材白描页。文字强调勾线要区分物象质感、观察结构外线、注意转折包裹关系和线条虚实衔接。该页可作为白描质量评估标准来源。"
+    },
+    {
+      "page_range": "028-033",
+      "observed_role": "stepwise_coloring_and_finished_details",
+      "notes": "同一题材的淡彩步骤、局部放大、最终效果和文字说明连续出现。第 30 页明确把图13-图15与对象、颜色、动作、干后固色等条件绑定，是技法单元抽取的优先样本。"
+    }
+  ],
+  "next_pass_targets": [
+    "OCR page_018, page_026, page_027, page_030 first.",
+    "Detect figure boxes and figure numbers on those four pages.",
+    "Extract form_logic_units from page_018 and page_026.",
+    "Extract baimiao evaluation rules from page_027.",
+    "Extract technique_units from page_030."
+  ]
+}
