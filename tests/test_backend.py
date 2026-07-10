@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw
 from fastapi.testclient import TestClient
 from backend.app import app
 from backend.database import init_db
+from backend.services.baimiao_knowledge import BOOK_001_LINE_LOGIC, PAIR_REFERENCE_LINE_LOGIC
 from backend.services.line_draft import BAIMIAO_PROMPT, _resolve_image_size, _restore_round_border_from_original
 
 init_db()
@@ -27,9 +28,20 @@ def test_baimiao_prompt_forbids_hallucinated_objects():
     assert "原图没有鸟，就绝对不要画鸟" in BAIMIAO_PROMPT
     assert "任务不是创作新画" in BAIMIAO_PROMPT
     assert "输入图中没有的任何对象" in BAIMIAO_PROMPT
-    assert "任何花、叶、枝、鸟、线条都不得越过边界外侧" in BAIMIAO_PROMPT
+    assert "线稿不得越界" in BAIMIAO_PROMPT
     assert "补全必要结构线" not in BAIMIAO_PROMPT
     assert "鸟体等" not in BAIMIAO_PROMPT
+
+
+def test_baimiao_prompt_includes_book_and_pair_learning_logic():
+    assert "教材 33 页白描/线描共识" in BOOK_001_LINE_LOGIC
+    assert "叶缘随卷曲起伏" in BOOK_001_LINE_LOGIC
+    assert "原画/理想白描对照" not in BOOK_001_LINE_LOGIC
+    assert "微信图片_20260710131442_2_3.jpg" in PAIR_REFERENCE_LINE_LOGIC
+    assert "9cc8969d57de41ec82f2c16249d2419e.png" in PAIR_REFERENCE_LINE_LOGIC
+    assert "微信图片_20260710213615_5_3.jpg" in PAIR_REFERENCE_LINE_LOGIC
+    assert "4da4b5d3486243cdab1c44ea3545ff81.png" in PAIR_REFERENCE_LINE_LOGIC
+    assert "白描稿必须能与原图重叠检查" in BAIMIAO_PROMPT
 
 
 def test_baimiao_auto_size_resolves_to_supported_size(tmp_path, monkeypatch):
