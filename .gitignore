@@ -6,6 +6,7 @@ build/
 .venv/
 .env
 data/
+!frontend/data/
 uploads/
 *.egg
 .DS_Store
