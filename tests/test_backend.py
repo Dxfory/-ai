@@ -20,6 +20,35 @@ def test_health():
     assert data["server"] == "国画临摹AI教练"
 
 
+def test_create_and_filter_asset():
+    resp = client.post("/api/v1/assets/", json={
+        "title": "Public domain flower study",
+        "source_name": "Internal seed set",
+        "source_url": "https://example.com/assets/flower",
+        "license_type": "CC0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "attribution_text": "CC0 test asset",
+        "display_allowed": True,
+        "train_allowed": True,
+        "commercial_allowed": True,
+        "derivative_allowed": True,
+        "risk_level": "green",
+        "image_url": "/assets/flower.jpg",
+        "metadata": {"genre": "flower_bird", "method": "gongbi"},
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["title"] == "Public domain flower study"
+    assert data["risk_level"] == "green"
+    assert data["display_allowed"] is True
+    assert data["train_allowed"] is True
+
+    list_resp = client.get("/api/v1/assets/?risk_level=green&display_allowed=true")
+    assert list_resp.status_code == 200
+    assets = list_resp.json()
+    assert any(asset["id"] == data["id"] for asset in assets)
+
+
 def test_create_artwork():
     resp = client.post("/api/v1/artworks/", json={
         "title": "出水芙蓉图", "genre": "flower_bird",

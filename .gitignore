@@ -5,6 +5,7 @@ dist/
 build/
 .venv/
 .env
+data/
 *.egg
 .DS_Store
 .vscode/

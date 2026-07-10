@@ -1,10 +1,30 @@
 ﻿"""SQLAlchemy ORM 妯″瀷 (淇敼鐗? 鏃?teacher/classroom 琛?"""
 
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, DateTime, JSON, ForeignKey
+from sqlalchemy import Boolean, Column, String, Integer, DateTime, JSON, ForeignKey
 from sqlalchemy.orm import relationship
 
 from .database import Base
+
+
+class AssetModel(Base):
+    __tablename__ = "assets"
+    id = Column(String, primary_key=True)
+    title = Column(String, nullable=False)
+    source_name = Column(String, nullable=False)
+    source_url = Column(String, nullable=False)
+    license_type = Column(String, nullable=False)
+    license_url = Column(String, default="")
+    attribution_text = Column(String, default="")
+    display_allowed = Column(Boolean, default=False)
+    train_allowed = Column(Boolean, default=False)
+    commercial_allowed = Column(Boolean, default=False)
+    derivative_allowed = Column(Boolean, default=False)
+    risk_level = Column(String, default="unknown")
+    file_hash = Column(String, default="")
+    image_url = Column(String, default="")
+    metadata_ = Column("metadata", JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.now)
 
 
 class ArtworkModel(Base):

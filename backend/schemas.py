@@ -12,6 +12,28 @@ class MaterialItemSchema(BaseModel):
     step: Optional[int] = None
 
 
+class AssetCreateRequest(BaseModel):
+    title: str
+    source_name: str
+    source_url: str
+    license_type: str
+    license_url: str = ""
+    attribution_text: str = ""
+    display_allowed: bool = False
+    train_allowed: bool = False
+    commercial_allowed: bool = False
+    derivative_allowed: bool = False
+    risk_level: str = "unknown"
+    file_hash: str = ""
+    image_url: str = ""
+    metadata: dict = {}
+
+
+class AssetSchema(AssetCreateRequest):
+    id: str
+    created_at: datetime = Field(default_factory=datetime.now)
+
+
 class StepSchema(BaseModel):
     id: str
     course_id: str

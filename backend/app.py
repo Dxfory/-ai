@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .database import init_db
-from .routes import artworks, courses, submissions
+from .routes import artworks, assets, courses, submissions
 from .schemas import HealthResponse
 
 app = FastAPI(
@@ -22,6 +22,7 @@ app.add_middleware(
 )
 
 app.include_router(artworks.router)
+app.include_router(assets.router)
 app.include_router(courses.router)
 app.include_router(submissions.router)
 
@@ -47,6 +48,7 @@ def root():
         "health": "/health",
         "api": {
             "artworks": "/api/v1/artworks/",
+            "assets": "/api/v1/assets/",
             "courses": "/api/v1/courses/generate",
             "submissions": "/api/v1/submissions/",
         }
