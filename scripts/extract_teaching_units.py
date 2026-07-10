@@ -12,6 +12,7 @@ import json
 import mimetypes
 import os
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -25,8 +26,14 @@ SYSTEM_PROMPT = """你是工笔花鸟临摹教材的图文结构抽取助手。
 1. OCR 主要文字、标题、图号、图注。
 2. 每个图号对应的图像内容与附近文字说明。
 3. 形理逻辑：真实物象如何转成画面结构、枝叶/花果/禽鸟如何穿插、遮挡、转折。
-4. 白描逻辑：哪些线是骨架线，哪些线表达质感、转折、包裹、虚实、疏密。
+4. 原作已有墨线/勾线逻辑：只观察原画或书中白描稿里已经存在的作者勾线，不要发明新线，不要把照片边缘当成白描线。
 5. 技法步骤：对象、材料/颜色、动作、先后顺序、等待/干后/固色等条件、常见风险。
+
+白描训练的核心约束：
+- 最终要学习“原作者已经画在原作中的线”的取舍和组织逻辑。
+- 判断一根线是否应该进入白描稿时，优先依据原画可见墨线、白描稿、教材文字说明。
+- 不允许改变构图方向、对象数量、枝叶走势、花果/鸟体位置。
+- 可以总结哪些线表达骨架、质感、转折、包裹、遮挡、虚实、疏密，但不要凭空补画不存在的结构。
 
 只返回 JSON，不要返回 Markdown。不要逐字长篇复刻整页文字；保留必要短摘录和你抽取出的结构。"""
 
@@ -59,6 +66,16 @@ USER_PROMPT = """请分析这页工笔花鸟教材扫描页，并返回如下 JS
       "linked_figure_nos": []
     }
   ],
+  "existing_ink_line_observations": [
+    {
+      "source_figure_no": "图8",
+      "object": "",
+      "visible_author_lines": "",
+      "line_function": "骨架|轮廓|叶脉|纹理|质感|转折|遮挡|虚实|设色边界|unknown",
+      "line_extraction_rule": "",
+      "do_not_invent": []
+    }
+  ],
   "technique_units": [
     {
       "step_order": null,
@@ -71,8 +88,33 @@ USER_PROMPT = """请分析这页工笔花鸟教材扫描页，并返回如下 JS
     }
   ],
   "baimiao_quality_rules": [],
+  "faithfulness_constraints": [],
   "needs_human_review": []
 }"""
+
+
+COMPACT_USER_PROMPT = """请只基于本页图像抽取工笔花鸟白描训练要点，返回 JSON：
+{
+  "page_id": "",
+  "page_index": 0,
+  "page_type": "form_logic|baimiao_logic|coloring_step|finished_artwork|mixed|unknown",
+  "ocr_summary": {"titles": [], "figure_numbers": [], "short_text_summary": "", "key_terms": []},
+  "figures": [{"figure_no": "", "visual_content": "", "role": "", "linked_text_summary": ""}],
+  "existing_ink_line_observations": [
+    {
+      "source_figure_no": "",
+      "object": "",
+      "visible_author_lines": "",
+      "line_function": "骨架|轮廓|叶脉|纹理|质感|转折|遮挡|虚实|设色边界|unknown",
+      "line_extraction_rule": "",
+      "do_not_invent": []
+    }
+  ],
+  "baimiao_quality_rules": [],
+  "faithfulness_constraints": [],
+  "needs_human_review": []
+}
+重点：只学习原画或白描稿中已经存在的作者勾线，不要把照片边缘、纸纹、扫描阴影、设色色块边缘当成必须生成的白描线。"""
 
 
 def load_env_file(env_path: Path) -> None:
@@ -125,6 +167,35 @@ def extract_json(text: str) -> dict[str, Any]:
         return json.loads(match.group(0))
 
 
+def extract_message_text(data: dict[str, Any]) -> str:
+    if isinstance(data.get("output_text"), str):
+        return data["output_text"]
+    if isinstance(data.get("output"), list):
+        parts = []
+        for output_item in data["output"]:
+            for content_item in output_item.get("content", []):
+                if isinstance(content_item, dict):
+                    parts.append(content_item.get("text") or content_item.get("output_text") or "")
+        text = "\n".join(part for part in parts if part)
+        if text:
+            return text
+    choice = data.get("choices", [{}])[0]
+    message = choice.get("message") or {}
+    if isinstance(message.get("content"), str):
+        return message["content"]
+    if isinstance(message.get("content"), list):
+        parts = []
+        for item in message["content"]:
+            if isinstance(item, dict):
+                parts.append(item.get("text") or item.get("content") or "")
+        text = "\n".join(part for part in parts if part)
+        if text:
+            return text
+    if isinstance(choice.get("text"), str):
+        return choice["text"]
+    raise KeyError(f"Cannot find message content in response keys: {sorted(data.keys())}")
+
+
 def prepare_model_image(page: dict[str, Any], output_dir: Path, max_side: int) -> Path:
     source_path = Path(page["raw_path"])
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -141,7 +212,22 @@ def call_vision_model(
     base_url: str,
     api_key: str,
     image_path: Path,
+    raw_response_dir: Path,
+    wire_api: str,
+    compact: bool,
 ) -> dict[str, Any]:
+    if wire_api == "responses":
+        return call_responses_model(
+            page=page,
+            model=model,
+            base_url=base_url,
+            api_key=api_key,
+            image_path=image_path,
+            raw_response_dir=raw_response_dir,
+            compact=compact,
+        )
+
+    prompt = COMPACT_USER_PROMPT if compact else USER_PROMPT
     payload = {
         "model": model,
         "messages": [
@@ -149,7 +235,7 @@ def call_vision_model(
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": f"page_id={page['page_id']}, page_index={page['page_index']}\n{USER_PROMPT}"},
+                    {"type": "text", "text": f"page_id={page['page_id']}, page_index={page['page_index']}\n{prompt}"},
                     {"type": "image_url", "image_url": {"url": image_data_url(image_path)}},
                 ],
             },
@@ -162,19 +248,81 @@ def call_vision_model(
         response = client.post(f"{base_url}/chat/completions", headers=headers, json=payload)
         response.raise_for_status()
         data = response.json()
-    content = data["choices"][0]["message"]["content"]
+    raw_response_dir.mkdir(parents=True, exist_ok=True)
+    (raw_response_dir / f"{page['page_id']}_raw_response.json").write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    content = extract_message_text(data)
     result = extract_json(content)
     result.setdefault("page_id", page["page_id"])
     result.setdefault("page_index", page["page_index"])
     return result
 
 
+def call_responses_model(
+    page: dict[str, Any],
+    model: str,
+    base_url: str,
+    api_key: str,
+    image_path: Path,
+    raw_response_dir: Path,
+    compact: bool,
+) -> dict[str, Any]:
+    prompt = COMPACT_USER_PROMPT if compact else USER_PROMPT
+    payload = {
+        "model": model,
+        "input": [
+            {
+                "role": "system",
+                "content": [{"type": "input_text", "text": SYSTEM_PROMPT}],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": f"page_id={page['page_id']}, page_index={page['page_index']}\n{prompt}"},
+                    {"type": "input_image", "image_url": image_data_url(image_path)},
+                ],
+            },
+        ],
+        "temperature": 0.1,
+    }
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    with httpx.Client(timeout=180) as client:
+        response = client.post(f"{base_url}/responses", headers=headers, json=payload)
+        response.raise_for_status()
+        data = response.json()
+    raw_response_dir.mkdir(parents=True, exist_ok=True)
+    (raw_response_dir / f"{page['page_id']}_raw_response.json").write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    content = extract_message_text(data)
+    result = extract_json(content)
+    result.setdefault("page_id", page["page_id"])
+    result.setdefault("page_index", page["page_index"])
+    return result
+
+
+def parse_selected_pages(value: str, pages: list[dict[str, Any]]) -> set[int]:
+    if value.strip().lower() == "all":
+        return {page["page_index"] for page in pages}
+    return {
+        int(part.strip())
+        for part in value.split(",")
+        if part.strip()
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("processed_book_dir", type=Path)
-    parser.add_argument("--pages", required=True, help="Comma-separated 1-based page numbers, e.g. 18,26,27,30")
+    parser.add_argument("--pages", required=True, help="Comma-separated 1-based page numbers, or all")
     parser.add_argument("--env", type=Path, default=Path(".env"))
     parser.add_argument("--max-image-side", type=int, default=1600)
+    parser.add_argument("--retries", type=int, default=2)
+    parser.add_argument("--retry-sleep", type=float, default=4.0)
+    parser.add_argument("--compact", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -188,15 +336,14 @@ def main() -> None:
         or "https://api.openai.com/v1"
     )
     model = os.getenv("TEACHING_VISION_MODEL", "gpt-5.5")
+    wire_api = os.getenv("TEACHING_VISION_WIRE_API", "responses").strip().lower()
 
-    selected = {
-        int(value.strip())
-        for value in args.pages.split(",")
-        if value.strip()
-    }
-    pages = [page for page in load_pages(args.processed_book_dir) if page["page_index"] in selected]
+    all_pages = load_pages(args.processed_book_dir)
+    selected = parse_selected_pages(args.pages, all_pages)
+    pages = [page for page in all_pages if page["page_index"] in selected]
     output_dir = args.processed_book_dir / "ocr"
     model_image_dir = output_dir / "model_images"
+    raw_response_dir = output_dir / "raw_responses"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if args.dry_run:
@@ -206,6 +353,9 @@ def main() -> None:
             "pages": [page["page_index"] for page in pages],
             "output_dir": str(output_dir),
             "max_image_side": args.max_image_side,
+            "wire_api": wire_api,
+            "retries": args.retries,
+            "compact": args.compact,
             "has_api_key": bool(api_key),
         }, ensure_ascii=False, indent=2))
         return
@@ -214,23 +364,75 @@ def main() -> None:
         raise RuntimeError("Missing TEACHING_VISION_API_KEY, OPENAI_API_KEY, or BAIMIAO_API_KEY")
 
     outputs = []
+    failures = []
     for page in pages:
         image_path = prepare_model_image(page, model_image_dir, args.max_image_side)
-        result = call_vision_model(
-            page,
-            model=model,
-            base_url=base_url,
-            api_key=api_key,
-            image_path=image_path,
-        )
         output_path = output_dir / f"{page['page_id']}_teaching_units.json"
-        output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-        outputs.append(str(output_path))
+        try:
+            result = call_with_retries(
+                page=page,
+                model=model,
+                base_url=base_url,
+                api_key=api_key,
+                image_path=image_path,
+                raw_response_dir=raw_response_dir,
+                wire_api=wire_api,
+                retries=args.retries,
+                retry_sleep=args.retry_sleep,
+                compact=args.compact,
+            )
+            output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+            outputs.append(str(output_path))
+        except Exception as exc:
+            failure = {
+                "page_id": page["page_id"],
+                "page_index": page["page_index"],
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            }
+            failures.append(failure)
+            with (output_dir / "failures.jsonl").open("a", encoding="utf-8") as out:
+                out.write(json.dumps(failure, ensure_ascii=False) + "\n")
 
     print(json.dumps({
         "pages": len(outputs),
         "outputs": outputs,
+        "failures": failures,
     }, ensure_ascii=False, indent=2))
+
+
+def call_with_retries(
+    page: dict[str, Any],
+    model: str,
+    base_url: str,
+    api_key: str,
+    image_path: Path,
+    raw_response_dir: Path,
+    wire_api: str,
+    retries: int,
+    retry_sleep: float,
+    compact: bool,
+) -> dict[str, Any]:
+    last_error: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            return call_vision_model(
+                page,
+                model=model,
+                base_url=base_url,
+                api_key=api_key,
+                image_path=image_path,
+                raw_response_dir=raw_response_dir,
+                wire_api=wire_api,
+                compact=compact,
+            )
+        except (httpx.HTTPError, KeyError, json.JSONDecodeError) as exc:
+            last_error = exc
+            if attempt >= retries:
+                break
+            time.sleep(retry_sleep * (attempt + 1))
+    assert last_error is not None
+    raise last_error
 
 
 if __name__ == "__main__":

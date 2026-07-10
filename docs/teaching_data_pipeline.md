@@ -128,6 +128,7 @@
 TEACHING_VISION_API_BASE=https://lingsuan.top
 TEACHING_VISION_API_KEY=replace-with-your-api-key
 TEACHING_VISION_MODEL=gpt-5.5
+TEACHING_VISION_WIRE_API=responses
 ```
 
 脚本输出到 `datasets/processed_books/book_001/ocr/`。这个目录不会提交 Git，因为里面可能包含书籍 OCR 文本和模型抽取结果。第一轮只跑少量页，人工确认抽取结果靠谱后，再扩展到整本书。

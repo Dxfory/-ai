@@ -50,6 +50,14 @@
 
 第一版可以用 JSON 文件，不急着上向量数据库。等资料超过 5-10 本、检索需求明确后再引入向量索引。
 
+当前 `book_001` 已可生成第一版轻量知识文件：
+
+```bash
+.venv/bin/python scripts/build_book_knowledge.py datasets/processed_books/book_001
+```
+
+它会读取本地 `ocr/` 结果，输出 `book_knowledge.json`。这个文件只保存页级摘要、图号索引、已有墨线规则、技法单元和忠实度约束，不复制完整 OCR 长文本。
+
 ## 阶段 3：白描生成短期路线
 
 短期不要完全依赖 `gpt-image-2` 直接重画白描，因为它会改变构图和细节。
