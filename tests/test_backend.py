@@ -85,6 +85,18 @@ def test_gongbi_line_draft_practice_flow():
     assert draft["file_url"].endswith(".png")
     assert draft["metadata"]["width"] > 0
 
+    fenran_resp = client.post("/api/v1/color-steps/generate", json={
+        "reference_upload_id": reference["id"],
+        "line_draft_id": draft["id"],
+        "step_type": "fenran",
+        "provider": "local_fenran_preview",
+    })
+    assert fenran_resp.status_code == 200
+    fenran = fenran_resp.json()
+    assert fenran["file_url"].startswith("/uploads/color_steps/")
+    assert fenran["provider"] == "local_fenran_preview"
+    assert fenran["metadata"]["width"] > 0
+
     session_resp = client.post("/api/v1/practice-sessions/", json={
         "reference_upload_id": reference["id"],
         "line_draft_id": draft["id"],

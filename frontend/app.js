@@ -1,6 +1,7 @@
 const state = {
   reference: null,
   draft: null,
+  fenran: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -36,7 +37,14 @@ $("uploadForm").addEventListener("submit", async (event) => {
       method: "POST",
       body: formData,
     });
+    state.draft = null;
+    state.fenran = null;
     setImage("referencePreview", state.reference.file_url);
+    $("draftPreview").removeAttribute("src");
+    $("fenranPreview").removeAttribute("src");
+    $("downloadDraft").hidden = true;
+    $("downloadFenran").hidden = true;
+    $("fenranForm").hidden = true;
     $("draftForm").hidden = false;
     setStatus("原画已上传，可以生成白描稿。");
   } catch (error) {
@@ -63,7 +71,32 @@ $("draftForm").addEventListener("submit", async (event) => {
     setImage("draftPreview", state.draft.file_url);
     $("downloadDraft").href = state.draft.file_url;
     $("downloadDraft").hidden = false;
-    setStatus("白描稿已生成，可以下载。");
+    $("fenranForm").hidden = false;
+    setStatus("白描稿已生成，可以继续生成分染图。");
+  } catch (error) {
+    setStatus(`生成失败：${error.message}`);
+  }
+});
+
+$("fenranForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!state.reference || !state.draft) return;
+  setStatus("正在生成分染图...");
+  try {
+    state.fenran = await jsonFetch("/api/v1/color-steps/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        reference_upload_id: state.reference.id,
+        line_draft_id: state.draft.id,
+        step_type: "fenran",
+        provider: "ai_fenran",
+      }),
+    });
+    setImage("fenranPreview", state.fenran.file_url);
+    $("downloadFenran").href = state.fenran.file_url;
+    $("downloadFenran").hidden = false;
+    setStatus("分染图已生成，可以下载。");
   } catch (error) {
     setStatus(`生成失败：${error.message}`);
   }

@@ -1,0 +1,84 @@
+{
+  "book_id": "book_001",
+  "source": "33 scanned teaching pages, distilled from book_knowledge.json technique_units",
+  "learning_goal": "Understand gongbi flower-and-bird fenran logic and use it to generate a faithful fenran step image from a user's original painting and baimiao draft.",
+  "definition": {
+    "fenran": "After baimiao and line drawing, apply thin transparent ink or color in repeated layers to establish volume, light-dark relation, object turning, front-back hierarchy, and material difference.",
+    "not_fenran": [
+      "Not a finished heavy-color painting.",
+      "Not generic photo colorization.",
+      "Not a repaint that changes composition or invents structure.",
+      "Not flat color fill inside line art."
+    ]
+  },
+  "global_rules": [
+    "Preserve baimiao lines clearly; color must never cover or blur the line skeleton.",
+    "Use thin, transparent, low-saturation layers; build relation by gradual transitions.",
+    "Follow the original composition, object count, branch direction, leaf direction, fruit and bird placement.",
+    "Use color only to reveal structure already present in the original painting and baimiao draft.",
+    "Keep water lines around important veins or turns where the teaching pages require them.",
+    "Avoid paper texture, scan shadows, stains, background noise, or accidental printing artifacts.",
+    "The output should read as a teaching step image, not as a final completed work."
+  ],
+  "object_rules": [
+    {
+      "object": "正叶",
+      "colors": ["花青", "汁绿", "三绿"],
+      "actions": ["分染叶面暗部", "罩染汁绿或三绿", "顺主叶脉留水线", "必要处醒提叶脉"],
+      "warnings": ["Do not paint every leaf in the same green.", "Do not cover the main vein water line.", "Do not invent extra veins."]
+    },
+    {
+      "object": "反叶",
+      "colors": ["赭石", "少量藤黄", "四绿", "汁绿"],
+      "actions": ["用偏灰、偏暖或偏浅的色相区分翻转叶面", "顺翻转方向分染", "必要时用四绿勾叶筋"],
+      "warnings": ["Do not merge front and back leaves into one plane.", "Do not make reverse leaves too saturated."]
+    },
+    {
+      "object": "枝干",
+      "colors": ["淡墨", "赭墨", "赭石", "藤黄"],
+      "actions": ["干笔皴染", "沿主枝走势建立骨架体积", "在节疤、转折和遮挡处加强淡墨关系"],
+      "warnings": ["Keep dry-brush texture.", "Do not cover knots and structural turns with flat brown."]
+    },
+    {
+      "object": "果实",
+      "colors": ["赭粉", "赭石", "藤黄", "淡胭红", "胭脂"],
+      "actions": ["按圆润体积分染", "用淡色建立前后遮挡", "在蒂部、边缘和相交处加深关系"],
+      "warnings": ["Do not mechanically fill the whole fruit.", "Do not draw unrelated spots as lines or decoration."]
+    },
+    {
+      "object": "鸟体",
+      "colors": ["淡墨", "赭墨", "赭石"],
+      "actions": ["按头、身、尾、胸腹关系分染", "顺羽组结构做虚实变化", "保持身体整体体积"],
+      "warnings": ["Do not invent feather groups.", "Do not make all fur or feathers equally dark."]
+    },
+    {
+      "object": "花",
+      "colors": ["胭脂", "淡粉", "白粉", "蛤粉"],
+      "actions": ["轻分染花瓣转折", "必要时醒提花脉或亮部", "保持花瓣透明感"],
+      "warnings": ["Do not make flower veins decorative and dense.", "Do not turn white powder into thick opaque paint."]
+    },
+    {
+      "object": "石榴籽/葡萄/柑橘等颗粒果物",
+      "colors": ["赭红", "胭脂", "蛤白", "藤黄", "淡赭石", "四绿", "汁绿"],
+      "actions": ["按颗粒中心和边缘分染", "保留颗粒前后层次", "在亮部醒提蛤白或淡白"],
+      "warnings": ["Do not average all grains into identical circles.", "Do not lose overlap and depth."]
+    }
+  ],
+  "generation_contract": {
+    "inputs": ["original_artwork", "baimiao_draft"],
+    "output": "fenran_step_image_png",
+    "must_preserve": ["composition", "orientation", "object_count", "visible line skeleton", "major occlusion relations"],
+    "allowed_changes": ["add transparent wash", "add soft gradient", "slightly clarify object-specific color relation"],
+    "forbidden_changes": ["new branches", "new leaves", "new petals", "new feathers", "new fruits", "mirroring", "rotation", "finished heavy coloring"]
+  },
+  "short_term_method": [
+    "Use the original artwork for color reference and the baimiao draft for structure lock.",
+    "Prompt the image model to produce a teaching-step fenran layer, not a final colored artwork.",
+    "Show the result to the user as a generated reference and collect failures for prompt and dataset refinement."
+  ],
+  "long_term_method": [
+    "Collect paired pages and manually reviewed step images for baimiao, fenran, zhaoran-water-color, zhaoran-mineral-color, and final.",
+    "Build an evaluation set that checks structural faithfulness, line preservation, object-specific color logic, transition naturalness, and teaching usability.",
+    "Train or fine-tune a smaller specialized model or adapter for step-image generation once enough paired examples exist."
+  ]
+}

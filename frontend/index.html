@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>原画转工笔白描</title>
+    <title>工笔花鸟步骤生成</title>
     <link rel="stylesheet" href="/app/styles.css" />
   </head>
   <body>
@@ -11,10 +11,10 @@
       <section class="workspace">
         <aside class="panel">
           <div class="brand">
-            <span class="mark">线</span>
+            <span class="mark">染</span>
             <div>
-              <h1>原画转工笔白描</h1>
-              <p>上传原画，输出白底黑线白描稿。</p>
+              <h1>工笔花鸟步骤生成</h1>
+              <p>上传原画，生成白描稿和分染步骤图。</p>
             </div>
           </div>
 
@@ -26,6 +26,10 @@
 
           <form id="draftForm" class="control-group" hidden>
             <button type="submit">生成白描稿</button>
+          </form>
+
+          <form id="fenranForm" class="control-group" hidden>
+            <button type="submit">生成分染图</button>
           </form>
 
           <p id="status" class="status">等待上传原画。</p>
@@ -41,6 +45,11 @@
               <figcaption>白描稿</figcaption>
               <img id="draftPreview" alt="" />
               <a id="downloadDraft" class="download" href="#" download hidden>下载白描稿</a>
+            </figure>
+            <figure>
+              <figcaption>分染图</figcaption>
+              <img id="fenranPreview" alt="" />
+              <a id="downloadFenran" class="download" href="#" download hidden>下载分染图</a>
             </figure>
           </div>
         </section>
