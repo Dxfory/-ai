@@ -112,3 +112,22 @@
 - `layout_previews/`：带框预览图，本地检查用，不提交 Git。
 
 这个脚本只做“粗区域候选”。它的价值是给 OCR、图号绑定和人工复核提供入口，不是最终的自动理解模型。对于书脊阴影、旁页残影、浅色画面底纹，它可能会把多个图块合并成大块；后续接入更强版面模型后再细分。
+
+## 视觉/OCR 抽取
+
+如果 `.env` 中配置了 OpenAI 兼容视觉模型，可以用下面的脚本抽取结构化教学信息：
+
+```bash
+.venv/bin/python scripts/extract_teaching_units.py datasets/processed_books/book_001 --pages 18,26,27,30 --dry-run
+.venv/bin/python scripts/extract_teaching_units.py datasets/processed_books/book_001 --pages 18,26,27,30
+```
+
+建议配置：
+
+```bash
+TEACHING_VISION_API_BASE=https://lingsuan.top
+TEACHING_VISION_API_KEY=replace-with-your-api-key
+TEACHING_VISION_MODEL=gpt-5.5
+```
+
+脚本输出到 `datasets/processed_books/book_001/ocr/`。这个目录不会提交 Git，因为里面可能包含书籍 OCR 文本和模型抽取结果。第一轮只跑少量页，人工确认抽取结果靠谱后，再扩展到整本书。
