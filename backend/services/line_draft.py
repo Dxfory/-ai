@@ -77,16 +77,17 @@ BAIMIAO_PROMPT = """请把输入原画转换成中国工笔白描稿。任务不
 
 硬性禁令：
 1. 严禁添加输入图中没有的任何对象。原图没有鸟，就绝对不要画鸟；原图没有动物，就绝对不要画动物。
-2. 严禁新增枝条、叶片、花瓣、花苞、叶脉、羽毛、果实、题跋、印章、装饰纹样或画面边框。
+2. 严禁新增枝条、叶片、花瓣、花苞、叶脉、羽毛、果实、题跋、印章、装饰纹样或原图没有的画面边框。
 3. 严禁根据“工笔花鸟”题材常识补画、想象、重组画面。
 4. 不要补全被遮挡、模糊到不可辨认或原图不可见的结构。
 
 提取规则：
 1. 构图方向、画芯边框、主体位置、对象数量、枝叶走势、花瓣遮挡关系必须忠实原图。
 2. 只提取原画里可见的花瓣边线、叶缘、主叶脉、必要侧脉、枝干骨架、花梗、花蕊真实边界、遮挡断续线和转折包裹线；只有当动物在输入图中真实可见时，才允许提取其外形和内部结构线。
-3. 参考已学习教材白描逻辑：骨架线清楚，轮廓线稳定，叶脉和纹理有取舍，遮挡处笔断意连，疏密虚实服从原作。
-4. 不要把纸纹、扫描阴影、背景噪声、色块晕染边缘机械转成线。
-5. 输出纯白背景、黑色清晰线条，尽量少灰度、少阴影、少噪声。
+3. 如果原画有圆形、扇面、册页或其他画芯边缘，这个边缘是严格裁切边界：边界形状、位置、大小必须复刻原图，任何花、叶、枝、鸟、线条都不得越过边界外侧。
+4. 参考已学习教材白描逻辑：骨架线清楚，轮廓线稳定，叶脉和纹理有取舍，遮挡处笔断意连，疏密虚实服从原作。
+5. 不要把纸纹、扫描阴影、背景噪声、色块晕染边缘机械转成线。
+6. 输出纯白背景、黑色清晰线条，尽量少灰度、少阴影、少噪声。
 
 输出一张白底黑线 PNG。"""
 
@@ -382,9 +383,27 @@ def _restore_round_border_from_original(clean: Image.Image, original_path: str) 
         round(border[2] * x_scale),
         round(border[3] * y_scale),
     )
+    result = _clear_outside_ellipse(result, scaled)
     draw = ImageDraw.Draw(result)
     draw.ellipse(scaled, outline=0, width=max(2, round(min(result.size) * 0.0025)))
     return result
+
+
+def _clear_outside_ellipse(img: Image.Image, ellipse: tuple[int, int, int, int]) -> Image.Image:
+    result = img.convert("L")
+    mask = Image.new("L", result.size, 0)
+    draw = ImageDraw.Draw(mask)
+    inset = max(1, round(min(result.size) * 0.0015))
+    inner = (
+        ellipse[0] + inset,
+        ellipse[1] + inset,
+        ellipse[2] - inset,
+        ellipse[3] - inset,
+    )
+    draw.ellipse(inner, fill=255)
+    white = Image.new("L", result.size, 255)
+    white.paste(result, mask=mask)
+    return white
 
 
 def _detect_round_artwork_border(img: Image.Image) -> tuple[int, int, int, int] | None:
