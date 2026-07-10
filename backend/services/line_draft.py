@@ -312,6 +312,7 @@ def _make_baimiao_structure_guide(source_path: str, output_path: str) -> None:
     artwork_mask = _detect_artwork_region_mask(img)
     if artwork_mask:
         guide = guide.convert("L")
+        guide = _clear_outside_artwork_mask(guide, artwork_mask)
         guide.paste(0, mask=_mask_outline(artwork_mask))
     guide.save(output_path)
 
@@ -370,20 +371,27 @@ def _clear_outside_artwork_mask(img: Image.Image, mask: Image.Image) -> Image.Im
 
 
 def _detect_artwork_region_mask(img: Image.Image) -> Image.Image | None:
+    original_size = img.size
     rgb = img.convert("RGB")
+    max_side = 512
+    if max(rgb.size) > max_side:
+        rgb.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
     width, height = rgb.size
-    pixels = rgb.load()
-    min_row_pixels = max(12, round(width * 0.035))
+    component_mask = _largest_warm_artwork_component(rgb)
+    if not component_mask:
+        return None
+
+    pixels = component_mask.load()
+    min_row_pixels = max(6, round(width * 0.02))
     row_spans: list[tuple[int, int, int]] = []
     for y in range(height):
         xs: list[int] = []
         for x in range(width):
-            r, g, b = pixels[x, y]
-            if _is_warm_artwork_ground(r, g, b):
+            if pixels[x, y]:
                 xs.append(x)
         if len(xs) >= min_row_pixels:
-            left_index = max(0, round(len(xs) * 0.02) - 1)
-            right_index = min(len(xs) - 1, round(len(xs) * 0.98))
+            left_index = max(0, round(len(xs) * 0.01) - 1)
+            right_index = min(len(xs) - 1, round(len(xs) * 0.99))
             row_spans.append((y, xs[left_index], xs[right_index]))
     if len(row_spans) < max(20, height * 0.2):
         return None
@@ -415,7 +423,105 @@ def _detect_artwork_region_mask(img: Image.Image) -> Image.Image | None:
         .filter(ImageFilter.GaussianBlur(radius=blur_radius))
         .point(lambda value: 255 if value >= 128 else 0)
         .filter(ImageFilter.MedianFilter(size=3))
+        .resize(original_size, Image.Resampling.LANCZOS)
+        .point(lambda value: 255 if value >= 128 else 0)
     )
+
+
+def _largest_warm_artwork_component(rgb: Image.Image) -> Image.Image | None:
+    width, height = rgb.size
+    source_pixels = rgb.load()
+    background = _estimate_background_color(rgb)
+    artwork = bytearray(width * height)
+    for y in range(height):
+        row_offset = y * width
+        for x in range(width):
+            r, g, b = source_pixels[x, y]
+            if _is_artwork_region_pixel(r, g, b, background):
+                artwork[row_offset + x] = 1
+
+    visited = bytearray(width * height)
+    best_pixels: list[int] = []
+    best_score = 0.0
+    min_pixels = max(100, round(width * height * 0.04))
+    for start, is_artwork in enumerate(artwork):
+        if not is_artwork or visited[start]:
+            continue
+        stack = [start]
+        visited[start] = 1
+        component: list[int] = []
+        left = width
+        right = 0
+        top = height
+        bottom = 0
+        while stack:
+            idx = stack.pop()
+            component.append(idx)
+            x = idx % width
+            y = idx // width
+            left = min(left, x)
+            right = max(right, x)
+            top = min(top, y)
+            bottom = max(bottom, y)
+            for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+                if nx < 0 or nx >= width or ny < 0 or ny >= height:
+                    continue
+                nidx = ny * width + nx
+                if artwork[nidx] and not visited[nidx]:
+                    visited[nidx] = 1
+                    stack.append(nidx)
+
+        component_width = right - left + 1
+        component_height = bottom - top + 1
+        if len(component) < min_pixels:
+            continue
+        if component_width < width * 0.45 or component_height < height * 0.45:
+            continue
+        center_bonus = 1.2 if left < width * 0.55 and right > width * 0.45 else 1.0
+        score = len(component) * center_bonus
+        if score > best_score:
+            best_score = score
+            best_pixels = component
+
+    if not best_pixels:
+        return None
+
+    mask = Image.new("L", rgb.size, 0)
+    mask_pixels = mask.load()
+    for idx in best_pixels:
+        mask_pixels[idx % width, idx // width] = 255
+    return mask
+
+
+def _estimate_background_color(rgb: Image.Image) -> tuple[int, int, int]:
+    width, height = rgb.size
+    pixels = rgb.load()
+    margin = max(3, min(width, height) // 32)
+    samples: list[tuple[int, int, int]] = []
+    for x_range, y_range in (
+        (range(0, margin), range(0, margin)),
+        (range(width - margin, width), range(0, margin)),
+        (range(0, margin), range(height - margin, height)),
+        (range(width - margin, width), range(height - margin, height)),
+    ):
+        for x in x_range:
+            for y in y_range:
+                samples.append(pixels[x, y])
+    if not samples:
+        return (255, 255, 255)
+    channels = list(zip(*samples))
+    return tuple(sorted(channel)[len(channel) // 2] for channel in channels)  # type: ignore[return-value]
+
+
+def _is_artwork_region_pixel(r: int, g: int, b: int, background: tuple[int, int, int]) -> bool:
+    bg_r, bg_g, bg_b = background
+    color_distance = abs(r - bg_r) + abs(g - bg_g) + abs(b - bg_b)
+    if color_distance < 42:
+        return False
+    brightness = (r + g + b) / 3
+    if brightness > 246:
+        return False
+    return True
 
 
 def _mask_outline(mask: Image.Image) -> Image.Image:

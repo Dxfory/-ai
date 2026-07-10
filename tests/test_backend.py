@@ -10,7 +10,12 @@ from fastapi.testclient import TestClient
 from backend.app import app
 from backend.database import init_db
 from backend.services.baimiao_knowledge import BOOK_001_LINE_LOGIC, PAIR_REFERENCE_LINE_LOGIC
-from backend.services.line_draft import BAIMIAO_PROMPT, _resolve_image_size, _restore_round_border_from_original
+from backend.services.line_draft import (
+    BAIMIAO_PROMPT,
+    _detect_artwork_region_mask,
+    _resolve_image_size,
+    _restore_round_border_from_original,
+)
 
 init_db()
 client = TestClient(app)
@@ -41,6 +46,8 @@ def test_baimiao_prompt_includes_book_and_pair_learning_logic():
     assert "9cc8969d57de41ec82f2c16249d2419e.png" in PAIR_REFERENCE_LINE_LOGIC
     assert "微信图片_20260710213615_5_3.jpg" in PAIR_REFERENCE_LINE_LOGIC
     assert "4da4b5d3486243cdab1c44ea3545ff81.png" in PAIR_REFERENCE_LINE_LOGIC
+    assert "73802f1c52bbc4004b852b6f8dbde788.jpg" in PAIR_REFERENCE_LINE_LOGIC
+    assert "55325c3597e1db77ac80ff42525aa913.jpg" in PAIR_REFERENCE_LINE_LOGIC
     assert "白描稿必须能与原图重叠检查" in BAIMIAO_PROMPT
 
 
@@ -86,6 +93,19 @@ def test_rounded_page_border_uses_original_shape(tmp_path):
     assert restored.getpixel((5, 210)) == 255
     assert restored.getpixel((250, 5)) == 255
     assert any(restored.getpixel((x, y)) == 0 for x in range(35, 60) for y in range(190, 230))
+
+
+def test_artwork_mask_ignores_detached_side_color_strip():
+    original = Image.new("RGB", (600, 480), "white")
+    draw = ImageDraw.Draw(original)
+    draw.rounded_rectangle((50, 25, 500, 430), radius=115, fill=(170, 123, 76))
+    draw.rectangle((545, 35, 580, 360), fill=(170, 123, 76))
+
+    mask = _detect_artwork_region_mask(original)
+
+    assert mask is not None
+    assert mask.getpixel((565, 160)) == 0
+    assert mask.getpixel((300, 220)) == 255
 
 
 def test_create_and_filter_asset():
