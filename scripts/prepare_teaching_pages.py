@@ -113,7 +113,7 @@ def write_manifests(records: list[PageRecord], processed_book_dir: Path) -> None
         "figure_schema": {
             "figure_no": "图9",
             "bbox": [0, 0, 0, 0],
-            "role": "reference|baimiao|gouxian|fenran|zhaoran|tiran|done|comparison|unknown",
+            "role": "reference|baimiao|gouxian|done|comparison|unknown",
             "step_order": None,
             "caption": "",
             "linked_text_block_ids": [],

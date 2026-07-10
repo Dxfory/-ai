@@ -13,14 +13,6 @@ MATERIALS = {
     "gongbi_brush_line": MaterialItem(
         category="brush", name="兼毫勾线笔", description="中锋勾线，线条匀净",
     ),
-    "gongbi_brush_color": MaterialItem(
-        category="brush", name="兼毫染色笔 x2",
-        description="一支沾颜色，一支沾清水，交替分染",
-    ),
-    "gongbi_brush_large": MaterialItem(
-        category="brush", name="羊毫或兼毫大染色笔",
-        description="大面积罩染，色要淡、多次叠加",
-    ),
     "xieyi_brush_big": MaterialItem(
         category="brush", name="羊毫大笔",
         description="铺色用，含水量大，一笔见浓淡",
@@ -42,7 +34,6 @@ MATERIALS = {
     "paper_bansheng": MaterialItem(category="paper", name="半生熟宣", description="水墨控制适中"),
     "ink_youyan": MaterialItem(category="ink", name="油烟墨", description="工笔勾线用，墨色光亮"),
     "ink_songyan": MaterialItem(category="ink", name="松烟墨", description="山水皴擦用，墨色沉稳"),
-    "color_gongbi": MaterialItem(category="color", name="国画颜料", description="酞青蓝、曙红、藤黄、赭石等"),
     "color_xieyi": MaterialItem(category="color", name="国画颜料", description="赭石、花青、藤黄等"),
 }
 
@@ -62,20 +53,6 @@ STEPS_GONGBI_FLOWER_BIRD = [
         "materials": [MATERIALS["gongbi_brush_line"], MATERIALS["paper_shuxuan"], MATERIALS["ink_youyan"]],
         "checklist": ["线条是否均匀？", "起笔收笔是否含蓄？", "是否中锋行笔？"],
         "common_mistakes": ["线条粗细不匀", "断线或接头明显", "偏锋导致线条单薄"],
-    },
-    {
-        "title": "分染",
-        "instruction": "用两支兼毫染色笔交替分染明暗。一支沾色，一支沾清水，由浅入深逐层渲染。注意花瓣根部的深色到瓣尖的浅色要有渐进过渡，不要一次性染太深。",
-        "materials": [MATERIALS["gongbi_brush_color"], MATERIALS["paper_shuxuan"], MATERIALS["color_gongbi"]],
-        "checklist": ["深浅过渡是否自然？", "色笔清水笔是否交替使用？", "是否由浅入深？"],
-        "common_mistakes": ["颜色过浓", "过渡生硬", "忘记用清水笔晕开"],
-    },
-    {
-        "title": "罩染",
-        "instruction": "用羊毫或兼毫大染色笔，大面积淡色罩染，统一画面色调。色要淡、多次叠加，每次干透后再染下一遍。切忌一次染太厚，否则会遮盖下面的线条。",
-        "materials": [MATERIALS["gongbi_brush_large"], MATERIALS["paper_shuxuan"], MATERIALS["color_gongbi"]],
-        "checklist": ["颜色是否淡而透？", "是否等待每层干透？", "罩染是否遮盖了线条？"],
-        "common_mistakes": ["颜色太厚", "遮盖线条", "没等干透就染下一层"],
     },
     {
         "title": "复勾调整",

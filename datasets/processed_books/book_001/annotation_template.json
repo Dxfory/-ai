@@ -341,7 +341,7 @@
       0,
       0
     ],
-    "role": "reference|baimiao|gouxian|fenran|zhaoran|tiran|done|comparison|unknown",
+    "role": "reference|baimiao|gouxian|done|comparison|unknown",
     "step_order": null,
     "caption": "",
     "linked_text_block_ids": []

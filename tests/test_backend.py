@@ -92,7 +92,7 @@ def test_gongbi_line_draft_practice_flow():
     })
     assert session_resp.status_code == 200
     session = session_resp.json()
-    assert len(session["steps"]) == 6
+    assert len(session["steps"]) == 2
     assert session["steps"][0]["title"] == "白描稿与构图定位"
 
     step_id = session["steps"][0]["id"]
@@ -149,10 +149,10 @@ def test_generate_course():
     data = resp.json()
     assert data["genre"] == "flower_bird"
     assert data["method"] == "gongbi"
-    assert len(data["steps"]) == 5
+    assert len(data["steps"]) == 3
     # 工笔应有 5 步
     assert data["steps"][0]["title"] == "构图定位"
-    assert data["steps"][4]["title"] == "复勾调整"
+    assert data["steps"][2]["title"] == "复勾调整"
     return data["id"]
 
 
