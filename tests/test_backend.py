@@ -9,6 +9,23 @@ from PIL import Image, ImageDraw
 from fastapi.testclient import TestClient
 from backend.app import app
 from backend.database import init_db
+from backend.services.baimiao_knowledge import BOOK_001_LINE_LOGIC, PAIR_REFERENCE_LINE_LOGIC
+from backend.services.line_draft import (
+    BAIMIAO_PROMPT,
+    _bbox_stats_to_dict,
+    _composition_delta,
+    _composition_warning,
+    _detect_artwork_region_mask,
+    _image_bbox_stats,
+    _post_baimiao_edit_without_status_check,
+    _prepare_api_image,
+    _repair_short_line_gaps,
+    _resolve_generation_canvas,
+    _resolve_image_size,
+    _smooth_junction_blobs,
+    _restore_source_aspect,
+    _restore_round_border_from_original,
+)
 
 init_db()
 client = TestClient(app)
@@ -20,6 +37,260 @@ def test_health():
     data = resp.json()
     assert data["status"] == "ok"
     assert data["server"] == "国画临摹AI教练"
+
+
+def test_baimiao_prompt_forbids_hallucinated_objects():
+    assert "原图没有鸟，就绝对不要画鸟" in BAIMIAO_PROMPT
+    assert "任务不是创作新画" in BAIMIAO_PROMPT
+    assert "输入图中没有的任何对象" in BAIMIAO_PROMPT
+    assert "线稿不得越界" in BAIMIAO_PROMPT
+    assert "补全必要结构线" not in BAIMIAO_PROMPT
+    assert "鸟体等" not in BAIMIAO_PROMPT
+    assert "严禁放大、缩小、拉伸、压扁、平移或重新排布主体" in BAIMIAO_PROMPT
+
+
+def test_baimiao_prompt_includes_book_and_pair_learning_logic():
+    assert "教材 33 页白描/线描共识" in BOOK_001_LINE_LOGIC
+    assert "叶缘随卷曲起伏" in BOOK_001_LINE_LOGIC
+    assert "原画/理想白描对照" not in BOOK_001_LINE_LOGIC
+    assert "微信图片_20260710131442_2_3.jpg" in PAIR_REFERENCE_LINE_LOGIC
+    assert "9cc8969d57de41ec82f2c16249d2419e.png" in PAIR_REFERENCE_LINE_LOGIC
+    assert "微信图片_20260710213615_5_3.jpg" in PAIR_REFERENCE_LINE_LOGIC
+    assert "4da4b5d3486243cdab1c44ea3545ff81.png" in PAIR_REFERENCE_LINE_LOGIC
+    assert "73802f1c52bbc4004b852b6f8dbde788.jpg" in PAIR_REFERENCE_LINE_LOGIC
+    assert "55325c3597e1db77ac80ff42525aa913.jpg" in PAIR_REFERENCE_LINE_LOGIC
+    assert "白描稿必须能与原图重叠检查" in BAIMIAO_PROMPT
+
+
+def test_baimiao_auto_size_resolves_to_supported_size(tmp_path, monkeypatch):
+    monkeypatch.setenv("BAIMIAO_IMAGE_SIZE", "auto")
+    image_path = tmp_path / "wide.png"
+    Image.new("RGB", (1200, 800), "white").save(image_path)
+
+    assert _resolve_image_size(str(image_path)) == "1536x1024"
+
+
+def test_generation_canvas_contains_wide_source_without_cropping(tmp_path, monkeypatch):
+    monkeypatch.setenv("BAIMIAO_IMAGE_SIZE", "auto")
+    monkeypatch.setenv("BAIMIAO_PRESERVE_SOURCE_ASPECT", "true")
+    image_path = tmp_path / "wide.png"
+    Image.new("RGB", (1440, 1224), "white").save(image_path)
+
+    canvas = _resolve_generation_canvas(str(image_path))
+
+    assert canvas.request_size == "1536x1024"
+    assert canvas.source_size == (1440, 1224)
+    assert canvas.canvas_size == (1536, 1024)
+    assert canvas.content_box[1] == 0
+    assert canvas.content_box[3] == 1024
+    assert canvas.content_box[2] - canvas.content_box[0] == 1205
+
+
+def test_generation_canvas_contains_tall_source_without_cropping(tmp_path, monkeypatch):
+    monkeypatch.setenv("BAIMIAO_IMAGE_SIZE", "auto")
+    monkeypatch.setenv("BAIMIAO_PRESERVE_SOURCE_ASPECT", "true")
+    image_path = tmp_path / "tall.png"
+    Image.new("RGB", (800, 1400), "white").save(image_path)
+
+    canvas = _resolve_generation_canvas(str(image_path))
+
+    assert canvas.request_size == "1024x1536"
+    assert canvas.source_size == (800, 1400)
+    assert canvas.canvas_size == (1024, 1536)
+    assert canvas.content_box[0] > 0
+    assert canvas.content_box[1] == 0
+    assert canvas.content_box[3] == 1536
+
+
+def test_prepare_api_image_uses_canvas_content_box(tmp_path, monkeypatch):
+    monkeypatch.setenv("BAIMIAO_IMAGE_SIZE", "1024x1024")
+    monkeypatch.setenv("BAIMIAO_PRESERVE_SOURCE_ASPECT", "true")
+    image_path = tmp_path / "wide.png"
+    output_path = tmp_path / "api.jpg"
+    source = Image.new("RGB", (400, 200), "white")
+    draw = ImageDraw.Draw(source)
+    draw.rectangle((0, 0, 399, 199), fill="black")
+    source.save(image_path)
+
+    canvas = _resolve_generation_canvas(str(image_path))
+    _prepare_api_image(str(image_path), str(output_path), canvas=canvas)
+
+    prepared = Image.open(output_path).convert("RGB")
+    assert prepared.size == (1024, 1024)
+    assert prepared.getpixel((512, 20)) == (255, 255, 255)
+    assert prepared.getpixel((512, 512))[0] < 10
+
+
+def test_restore_source_aspect_returns_original_size(tmp_path, monkeypatch):
+    monkeypatch.setenv("BAIMIAO_IMAGE_SIZE", "1024x1024")
+    monkeypatch.setenv("BAIMIAO_PRESERVE_SOURCE_ASPECT", "true")
+    image_path = tmp_path / "wide.png"
+    Image.new("RGB", (400, 200), "white").save(image_path)
+    canvas = _resolve_generation_canvas(str(image_path))
+    generated = Image.new("L", (1254, 1254), 255)
+    draw = ImageDraw.Draw(generated)
+    draw.rectangle((0, 313, 1253, 940), outline=0, width=3)
+
+    restored = _restore_source_aspect(generated, canvas)
+
+    assert restored.size == (400, 200)
+
+
+def test_repair_short_line_gaps_closes_small_gap():
+    img = Image.new("L", (12, 5), 255)
+    draw = ImageDraw.Draw(img)
+    draw.line((1, 2, 4, 2), fill=0)
+    draw.line((8, 2, 10, 2), fill=0)
+
+    repaired = _repair_short_line_gaps(img, 3)
+
+    assert all(repaired.getpixel((x, 2)) == 0 for x in range(1, 11))
+
+
+def test_repair_short_line_gaps_leaves_large_gap():
+    img = Image.new("L", (14, 5), 255)
+    draw = ImageDraw.Draw(img)
+    draw.line((1, 2, 3, 2), fill=0)
+    draw.line((9, 2, 12, 2), fill=0)
+
+    repaired = _repair_short_line_gaps(img, 3)
+
+    assert all(repaired.getpixel((x, 2)) == 255 for x in range(4, 9))
+
+
+def test_structure_guide_is_used_by_default(tmp_path, monkeypatch):
+    monkeypatch.delenv("BAIMIAO_USE_STRUCTURE_GUIDE", raising=False)
+    source_path = tmp_path / "source.png"
+    guide_path = tmp_path / "guide.png"
+    Image.new("RGB", (20, 20), "white").save(source_path)
+    Image.new("L", (20, 20), 255).save(guide_path)
+
+    class FakeResponse:
+        status_code = 200
+
+    class FakeClient:
+        def __init__(self):
+            self.file_counts = []
+
+        def post(self, url, headers, data, files):
+            self.file_counts.append(len(files) if isinstance(files, list) else len(files))
+            return FakeResponse()
+
+    client = FakeClient()
+    response, guide_used = _post_baimiao_edit_without_status_check(
+        client=client,
+        url="https://example.test/v1/images/edits",
+        headers={},
+        data={},
+        source_path=str(source_path),
+        guide_path=str(guide_path),
+    )
+
+    assert response.status_code == 200
+    assert guide_used is True
+    assert client.file_counts == [2]
+
+
+def test_bbox_stats_and_composition_warning_detect_scale_drift():
+    reference = Image.new("L", (100, 100), 255)
+    ImageDraw.Draw(reference).rectangle((20, 20, 80, 80), fill=0)
+    candidate = Image.new("L", (100, 100), 255)
+    ImageDraw.Draw(candidate).rectangle((30, 20, 70, 80), fill=0)
+
+    reference_stats = _image_bbox_stats(reference)
+    candidate_stats = _image_bbox_stats(candidate)
+    delta = _composition_delta(reference_stats, candidate_stats)
+
+    assert _bbox_stats_to_dict(reference_stats)["bbox"] == [20, 20, 81, 81]
+    assert delta["ratio_delta"] > 0.04
+    assert _composition_warning(delta) is True
+
+
+def test_composition_warning_allows_matching_boxes():
+    reference = Image.new("L", (100, 100), 255)
+    ImageDraw.Draw(reference).rectangle((20, 20, 80, 80), fill=0)
+    candidate = Image.new("L", (100, 100), 255)
+    ImageDraw.Draw(candidate).rectangle((21, 20, 81, 80), fill=0)
+
+    delta = _composition_delta(_image_bbox_stats(reference), _image_bbox_stats(candidate))
+
+    assert _composition_warning(delta) is False
+
+
+def test_smooth_junction_blobs_removes_corner_bulk_without_erasing_cross():
+    img = Image.new("L", (9, 9), 255)
+    draw = ImageDraw.Draw(img)
+    draw.line((1, 4, 7, 4), fill=0)
+    draw.line((4, 1, 4, 7), fill=0)
+    draw.rectangle((3, 3, 5, 5), fill=0)
+
+    smoothed = _smooth_junction_blobs(img, 3)
+
+    assert smoothed.getpixel((4, 4)) == 0
+    assert smoothed.getpixel((1, 4)) == 0
+    assert smoothed.getpixel((4, 1)) == 0
+    assert smoothed.getpixel((3, 3)) == 255
+
+
+def test_smooth_junction_blobs_keeps_thin_cross():
+    img = Image.new("L", (9, 9), 255)
+    draw = ImageDraw.Draw(img)
+    draw.line((1, 4, 7, 4), fill=0)
+    draw.line((4, 1, 4, 7), fill=0)
+
+    smoothed = _smooth_junction_blobs(img, 3)
+
+    assert all(smoothed.getpixel((x, 4)) == 0 for x in range(1, 8))
+    assert all(smoothed.getpixel((4, y)) == 0 for y in range(1, 8))
+
+
+def test_round_artwork_border_clips_generated_lines(tmp_path):
+    original_path = tmp_path / "original.png"
+    original = Image.new("RGB", (400, 400), "white")
+    draw_original = ImageDraw.Draw(original)
+    draw_original.ellipse((45, 35, 355, 345), fill=(181, 132, 72))
+    original.save(original_path)
+
+    generated = Image.new("L", (400, 400), 255)
+    draw_generated = ImageDraw.Draw(generated)
+    draw_generated.line((0, 0, 399, 399), fill=0, width=5)
+
+    restored = _restore_round_border_from_original(generated, str(original_path))
+
+    assert restored.getpixel((5, 5)) == 255
+    assert any(restored.getpixel((x, y)) == 0 for x in range(180, 220) for y in range(25, 55))
+
+
+def test_rounded_page_border_uses_original_shape(tmp_path):
+    original_path = tmp_path / "rounded_page.png"
+    original = Image.new("RGB", (500, 420), "white")
+    draw_original = ImageDraw.Draw(original)
+    draw_original.rounded_rectangle((45, 20, 455, 390), radius=95, fill=(168, 124, 82))
+    original.save(original_path)
+
+    generated = Image.new("L", (500, 420), 255)
+    draw_generated = ImageDraw.Draw(generated)
+    draw_generated.line((0, 210, 499, 210), fill=0, width=5)
+    draw_generated.line((250, 0, 250, 419), fill=0, width=5)
+
+    restored = _restore_round_border_from_original(generated, str(original_path))
+
+    assert restored.getpixel((5, 210)) == 255
+    assert restored.getpixel((250, 5)) == 255
+    assert any(restored.getpixel((x, y)) == 0 for x in range(35, 60) for y in range(190, 230))
+
+
+def test_artwork_mask_ignores_detached_side_color_strip():
+    original = Image.new("RGB", (600, 480), "white")
+    draw = ImageDraw.Draw(original)
+    draw.rounded_rectangle((50, 25, 500, 430), radius=115, fill=(170, 123, 76))
+    draw.rectangle((545, 35, 580, 360), fill=(170, 123, 76))
+
+    mask = _detect_artwork_region_mask(original)
+
+    assert mask is not None
+    assert mask.getpixel((565, 160)) == 0
+    assert mask.getpixel((300, 220)) == 255
 
 
 def test_create_and_filter_asset():
