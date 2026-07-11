@@ -19,6 +19,15 @@ class LineDraftResult:
     parameters: dict
 
 
+@dataclass
+class GenerationCanvas:
+    request_size: str
+    canvas_size: tuple[int, int]
+    source_size: tuple[int, int]
+    content_box: tuple[int, int, int, int]
+    preserve_source_aspect: bool
+
+
 def generate_line_draft(
     source_path: str,
     output_dir: str,
@@ -99,10 +108,11 @@ def generate_ai_baimiao(
     final_prompt = prompt.strip() or BAIMIAO_PROMPT
     url = f"{base_url}/images/edits"
     headers = {"Authorization": f"Bearer {api_key}"}
+    canvas = _resolve_generation_canvas(source_path)
     data = {
         "model": model,
         "prompt": final_prompt,
-        "size": _resolve_image_size(source_path),
+        "size": canvas.request_size,
     }
 
     os.makedirs(output_dir, exist_ok=True)
@@ -110,8 +120,8 @@ def generate_ai_baimiao(
     raw_output_path = Path(output_dir) / f"{draft_id}_raw.png"
     api_input_path = Path(output_dir) / f"{draft_id}_api_input.jpg"
     guide_path = Path(output_dir) / f"{draft_id}_structure_guide.png"
-    _prepare_api_image(source_path, str(api_input_path))
-    _make_baimiao_structure_guide(source_path, str(guide_path))
+    _prepare_api_image(source_path, str(api_input_path), canvas=canvas)
+    _make_baimiao_structure_guide(source_path, str(guide_path), canvas=canvas)
 
     with httpx.Client(timeout=_image_timeout_seconds()) as client:
         payload = _post_baimiao_edit(
@@ -133,9 +143,17 @@ def generate_ai_baimiao(
         else:
             raise RuntimeError("Image API did not return b64_json or url")
 
-    _clean_ai_line_art(str(raw_output_path), str(output_path), original_path=source_path)
+    _clean_ai_line_art(
+        str(raw_output_path),
+        str(output_path),
+        original_path=str(api_input_path),
+        canvas=canvas,
+    )
     with Image.open(output_path) as img:
         width, height = img.size
+    repair_lines = _env_flag("BAIMIAO_REPAIR_LINES", True)
+    clip_to_border = _env_flag("BAIMIAO_CLIP_TO_BORDER", True)
+    clean_output = _env_flag("BAIMIAO_CLEAN_OUTPUT", True)
     return LineDraftResult(
         output_path=str(output_path),
         width=width,
@@ -145,11 +163,18 @@ def generate_ai_baimiao(
             "model": model,
             "base_url": base_url,
             "size": data["size"],
+            "source_size": list(canvas.source_size),
+            "api_canvas_size": list(canvas.canvas_size),
+            "content_box": list(canvas.content_box),
             "prompt": final_prompt,
             "api_input_path": str(api_input_path),
             "raw_output_path": str(raw_output_path),
             "structure_guide_path": str(guide_path),
-            "cleaned": True,
+            "cleaned": clean_output,
+            "clip_to_border": clip_to_border,
+            "aspect_restored": canvas.preserve_source_aspect,
+            "line_repaired": clean_output and repair_lines,
+            "line_repair_max_gap": _line_repair_max_gap() if repair_lines else 0,
         },
     )
 
@@ -200,21 +225,73 @@ def _resolve_image_size(source_path: str) -> str:
     with Image.open(source_path) as img:
         width, height = img.size
     ratio = width / max(1, height)
-    if ratio >= 1.2:
+    if ratio >= 1.05:
         return "1536x1024"
-    if ratio <= 0.83:
+    if ratio <= 0.95:
         return "1024x1536"
     return "1024x1024"
+
+
+def _resolve_generation_canvas(source_path: str) -> GenerationCanvas:
+    request_size = _resolve_image_size(source_path)
+    canvas_size = _parse_image_size(request_size)
+    with ImageOps.exif_transpose(Image.open(source_path)) as img:
+        source_size = img.size
+
+    preserve_source_aspect = _env_flag("BAIMIAO_PRESERVE_SOURCE_ASPECT", True)
+    if not preserve_source_aspect:
+        return GenerationCanvas(
+            request_size=request_size,
+            canvas_size=canvas_size,
+            source_size=source_size,
+            content_box=(0, 0, canvas_size[0], canvas_size[1]),
+            preserve_source_aspect=False,
+        )
+
+    content_width, content_height = _contain_size(source_size, canvas_size)
+    left = (canvas_size[0] - content_width) // 2
+    top = (canvas_size[1] - content_height) // 2
+    return GenerationCanvas(
+        request_size=request_size,
+        canvas_size=canvas_size,
+        source_size=source_size,
+        content_box=(left, top, left + content_width, top + content_height),
+        preserve_source_aspect=True,
+    )
+
+
+def _parse_image_size(size: str) -> tuple[int, int]:
+    try:
+        width_text, height_text = size.lower().split("x", 1)
+        width = int(width_text)
+        height = int(height_text)
+    except (ValueError, AttributeError) as exc:
+        raise ValueError(f"Unsupported BAIMIAO_IMAGE_SIZE: {size}") from exc
+    if width <= 0 or height <= 0:
+        raise ValueError(f"Unsupported BAIMIAO_IMAGE_SIZE: {size}")
+    return width, height
+
+
+def _contain_size(source_size: tuple[int, int], target_size: tuple[int, int]) -> tuple[int, int]:
+    source_width, source_height = source_size
+    target_width, target_height = target_size
+    scale = min(target_width / max(1, source_width), target_height / max(1, source_height))
+    width = max(1, round(source_width * scale))
+    height = max(1, round(source_height * scale))
+    return width, height
 
 
 def _image_timeout_seconds() -> float:
     return float(os.getenv("BAIMIAO_IMAGE_TIMEOUT_SECONDS", "240"))
 
 
-def _prepare_api_image(source_path: str, output_path: str) -> None:
-    max_side = int(os.getenv("BAIMIAO_API_MAX_IMAGE_SIDE", "1024"))
+def _prepare_api_image(source_path: str, output_path: str, canvas: GenerationCanvas | None = None) -> None:
     img = ImageOps.exif_transpose(Image.open(source_path)).convert("RGB")
-    img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+    if canvas and canvas.preserve_source_aspect:
+        img = _place_on_generation_canvas(img, canvas)
+    else:
+        max_side = int(os.getenv("BAIMIAO_API_MAX_IMAGE_SIDE", "1024"))
+        img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
     suffix = Path(output_path).suffix.lower()
     if suffix in {".jpg", ".jpeg"}:
         img.save(output_path, quality=92, optimize=True)
@@ -297,9 +374,25 @@ def _post_single_image_edit(
     raise RuntimeError("Image API request failed without a response")
 
 
-def _make_baimiao_structure_guide(source_path: str, output_path: str) -> None:
-    img = Image.open(source_path).convert("RGB")
-    img.thumbnail((1536, 1536), Image.Resampling.LANCZOS)
+def _place_on_generation_canvas(img: Image.Image, canvas: GenerationCanvas) -> Image.Image:
+    source = img.convert("RGB")
+    target = Image.new("RGB", canvas.canvas_size, "white")
+    left, top, right, bottom = canvas.content_box
+    resized = source.resize((right - left, bottom - top), Image.Resampling.LANCZOS)
+    target.paste(resized, (left, top))
+    return target
+
+
+def _make_baimiao_structure_guide(
+    source_path: str,
+    output_path: str,
+    canvas: GenerationCanvas | None = None,
+) -> None:
+    img = ImageOps.exif_transpose(Image.open(source_path)).convert("RGB")
+    if canvas and canvas.preserve_source_aspect:
+        img = _place_on_generation_canvas(img, canvas)
+    else:
+        img.thumbnail((1536, 1536), Image.Resampling.LANCZOS)
     gray = ImageOps.grayscale(img)
     gray = ImageOps.autocontrast(gray)
     smooth = gray.filter(ImageFilter.MedianFilter(size=3))
@@ -317,7 +410,18 @@ def _make_baimiao_structure_guide(source_path: str, output_path: str) -> None:
     guide.save(output_path)
 
 
-def _clean_ai_line_art(source_path: str, output_path: str, original_path: str | None = None) -> None:
+def _clean_ai_line_art(
+    source_path: str,
+    output_path: str,
+    original_path: str | None = None,
+    canvas: GenerationCanvas | None = None,
+) -> None:
+    if not _env_flag("BAIMIAO_CLEAN_OUTPUT", True):
+        clean = Image.open(source_path).convert("L")
+        clean = _restore_source_aspect(clean, canvas)
+        clean.save(output_path)
+        return
+
     threshold = int(os.getenv("BAIMIAO_CLEAN_THRESHOLD", "225"))
     blur_radius = int(os.getenv("BAIMIAO_BACKGROUND_BLUR", "31"))
     img = Image.open(source_path).convert("L")
@@ -333,9 +437,87 @@ def _clean_ai_line_art(source_path: str, output_path: str, original_path: str | 
             clean_pixels[x, y] = 0 if normalized < threshold else 255
     if os.getenv("BAIMIAO_SOLIDIFY_LINES", "false").lower() in {"1", "true", "yes"}:
         clean = _solidify_line_art(clean)
-    if original_path:
+    if _env_flag("BAIMIAO_REPAIR_LINES", True):
+        clean = _repair_short_line_gaps(clean, _line_repair_max_gap())
+    if original_path and _env_flag("BAIMIAO_CLIP_TO_BORDER", True):
         clean = _restore_round_border_from_original(clean, original_path)
+    clean = _restore_source_aspect(clean, canvas)
+    clean = clean.point(lambda value: 0 if value < 128 else 255)
     clean.save(output_path)
+
+
+def _restore_source_aspect(img: Image.Image, canvas: GenerationCanvas | None) -> Image.Image:
+    if not canvas or not canvas.preserve_source_aspect:
+        return img
+    width, height = img.size
+    canvas_width, canvas_height = canvas.canvas_size
+    left, top, right, bottom = canvas.content_box
+    scaled_box = (
+        max(0, min(width - 1, round(left * width / canvas_width))),
+        max(0, min(height - 1, round(top * height / canvas_height))),
+        max(1, min(width, round(right * width / canvas_width))),
+        max(1, min(height, round(bottom * height / canvas_height))),
+    )
+    if scaled_box[2] <= scaled_box[0] or scaled_box[3] <= scaled_box[1]:
+        return img.resize(canvas.source_size, Image.Resampling.LANCZOS)
+    cropped = img.crop(scaled_box)
+    if cropped.size == canvas.source_size:
+        return cropped
+    return cropped.resize(canvas.source_size, Image.Resampling.LANCZOS)
+
+
+def _repair_short_line_gaps(img: Image.Image, max_gap: int) -> Image.Image:
+    max_gap = max(0, min(6, max_gap))
+    if max_gap <= 0:
+        return img.convert("L")
+
+    source = img.convert("L").point(lambda value: 0 if value < 128 else 255)
+    pixels = source.load()
+    width, height = source.size
+    additions: set[tuple[int, int]] = set()
+    directions = ((1, 0), (0, 1), (1, 1), (1, -1))
+
+    for y in range(height):
+        for x in range(width):
+            if pixels[x, y] != 0:
+                continue
+            for dx, dy in directions:
+                for gap in range(1, max_gap + 1):
+                    end_x = x + dx * (gap + 1)
+                    end_y = y + dy * (gap + 1)
+                    if end_x < 0 or end_x >= width or end_y < 0 or end_y >= height:
+                        break
+                    if pixels[end_x, end_y] != 0:
+                        continue
+                    between: list[tuple[int, int]] = []
+                    clear = True
+                    for step in range(1, gap + 1):
+                        mid_x = x + dx * step
+                        mid_y = y + dy * step
+                        if pixels[mid_x, mid_y] == 0:
+                            clear = False
+                            break
+                        between.append((mid_x, mid_y))
+                    if clear:
+                        additions.update(between)
+                    break
+
+    result = source.copy()
+    result_pixels = result.load()
+    for x, y in additions:
+        result_pixels[x, y] = 0
+    return result
+
+
+def _line_repair_max_gap() -> int:
+    return max(0, int(os.getenv("BAIMIAO_LINE_REPAIR_MAX_GAP", "3")))
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _solidify_line_art(img: Image.Image) -> Image.Image:

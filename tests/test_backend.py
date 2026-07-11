@@ -13,7 +13,11 @@ from backend.services.baimiao_knowledge import BOOK_001_LINE_LOGIC, PAIR_REFEREN
 from backend.services.line_draft import (
     BAIMIAO_PROMPT,
     _detect_artwork_region_mask,
+    _prepare_api_image,
+    _repair_short_line_gaps,
+    _resolve_generation_canvas,
     _resolve_image_size,
+    _restore_source_aspect,
     _restore_round_border_from_original,
 )
 
@@ -57,6 +61,94 @@ def test_baimiao_auto_size_resolves_to_supported_size(tmp_path, monkeypatch):
     Image.new("RGB", (1200, 800), "white").save(image_path)
 
     assert _resolve_image_size(str(image_path)) == "1536x1024"
+
+
+def test_generation_canvas_contains_wide_source_without_cropping(tmp_path, monkeypatch):
+    monkeypatch.setenv("BAIMIAO_IMAGE_SIZE", "auto")
+    monkeypatch.setenv("BAIMIAO_PRESERVE_SOURCE_ASPECT", "true")
+    image_path = tmp_path / "wide.png"
+    Image.new("RGB", (1440, 1224), "white").save(image_path)
+
+    canvas = _resolve_generation_canvas(str(image_path))
+
+    assert canvas.request_size == "1536x1024"
+    assert canvas.source_size == (1440, 1224)
+    assert canvas.canvas_size == (1536, 1024)
+    assert canvas.content_box[1] == 0
+    assert canvas.content_box[3] == 1024
+    assert canvas.content_box[2] - canvas.content_box[0] == 1205
+
+
+def test_generation_canvas_contains_tall_source_without_cropping(tmp_path, monkeypatch):
+    monkeypatch.setenv("BAIMIAO_IMAGE_SIZE", "auto")
+    monkeypatch.setenv("BAIMIAO_PRESERVE_SOURCE_ASPECT", "true")
+    image_path = tmp_path / "tall.png"
+    Image.new("RGB", (800, 1400), "white").save(image_path)
+
+    canvas = _resolve_generation_canvas(str(image_path))
+
+    assert canvas.request_size == "1024x1536"
+    assert canvas.source_size == (800, 1400)
+    assert canvas.canvas_size == (1024, 1536)
+    assert canvas.content_box[0] > 0
+    assert canvas.content_box[1] == 0
+    assert canvas.content_box[3] == 1536
+
+
+def test_prepare_api_image_uses_canvas_content_box(tmp_path, monkeypatch):
+    monkeypatch.setenv("BAIMIAO_IMAGE_SIZE", "1024x1024")
+    monkeypatch.setenv("BAIMIAO_PRESERVE_SOURCE_ASPECT", "true")
+    image_path = tmp_path / "wide.png"
+    output_path = tmp_path / "api.jpg"
+    source = Image.new("RGB", (400, 200), "white")
+    draw = ImageDraw.Draw(source)
+    draw.rectangle((0, 0, 399, 199), fill="black")
+    source.save(image_path)
+
+    canvas = _resolve_generation_canvas(str(image_path))
+    _prepare_api_image(str(image_path), str(output_path), canvas=canvas)
+
+    prepared = Image.open(output_path).convert("RGB")
+    assert prepared.size == (1024, 1024)
+    assert prepared.getpixel((512, 20)) == (255, 255, 255)
+    assert prepared.getpixel((512, 512))[0] < 10
+
+
+def test_restore_source_aspect_returns_original_size(tmp_path, monkeypatch):
+    monkeypatch.setenv("BAIMIAO_IMAGE_SIZE", "1024x1024")
+    monkeypatch.setenv("BAIMIAO_PRESERVE_SOURCE_ASPECT", "true")
+    image_path = tmp_path / "wide.png"
+    Image.new("RGB", (400, 200), "white").save(image_path)
+    canvas = _resolve_generation_canvas(str(image_path))
+    generated = Image.new("L", (1254, 1254), 255)
+    draw = ImageDraw.Draw(generated)
+    draw.rectangle((0, 313, 1253, 940), outline=0, width=3)
+
+    restored = _restore_source_aspect(generated, canvas)
+
+    assert restored.size == (400, 200)
+
+
+def test_repair_short_line_gaps_closes_small_gap():
+    img = Image.new("L", (12, 5), 255)
+    draw = ImageDraw.Draw(img)
+    draw.line((1, 2, 4, 2), fill=0)
+    draw.line((8, 2, 10, 2), fill=0)
+
+    repaired = _repair_short_line_gaps(img, 3)
+
+    assert all(repaired.getpixel((x, 2)) == 0 for x in range(1, 11))
+
+
+def test_repair_short_line_gaps_leaves_large_gap():
+    img = Image.new("L", (14, 5), 255)
+    draw = ImageDraw.Draw(img)
+    draw.line((1, 2, 3, 2), fill=0)
+    draw.line((9, 2, 12, 2), fill=0)
+
+    repaired = _repair_short_line_gaps(img, 3)
+
+    assert all(repaired.getpixel((x, 2)) == 255 for x in range(4, 9))
 
 
 def test_round_artwork_border_clips_generated_lines(tmp_path):
