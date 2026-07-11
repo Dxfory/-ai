@@ -28,6 +28,15 @@ class GenerationCanvas:
     preserve_source_aspect: bool
 
 
+@dataclass
+class BBoxStats:
+    bbox: tuple[int, int, int, int] | None
+    size: tuple[int, int]
+    center: tuple[float, float] | None
+    coverage: float
+    ratio: float | None
+
+
 def generate_line_draft(
     source_path: str,
     output_dir: str,
@@ -123,8 +132,9 @@ def generate_ai_baimiao(
     _prepare_api_image(source_path, str(api_input_path), canvas=canvas)
     _make_baimiao_structure_guide(source_path, str(guide_path), canvas=canvas)
 
+    guide_used = False
     with httpx.Client(timeout=_image_timeout_seconds()) as client:
-        payload = _post_baimiao_edit(
+        payload, guide_used = _post_baimiao_edit(
             client=client,
             url=url,
             headers=headers,
@@ -143,17 +153,24 @@ def generate_ai_baimiao(
         else:
             raise RuntimeError("Image API did not return b64_json or url")
 
+    api_input_stats = _line_art_bbox_stats(str(api_input_path))
+    guide_stats = _line_art_bbox_stats(str(guide_path))
+    raw_stats = _line_art_bbox_stats(str(raw_output_path))
     _clean_ai_line_art(
         str(raw_output_path),
         str(output_path),
         original_path=str(api_input_path),
         canvas=canvas,
     )
+    final_stats = _line_art_bbox_stats(str(output_path))
+    composition_delta = _composition_delta(guide_stats, raw_stats)
+    composition_warning = _composition_warning(composition_delta)
     with Image.open(output_path) as img:
         width, height = img.size
     repair_lines = _env_flag("BAIMIAO_REPAIR_LINES", True)
     clip_to_border = _env_flag("BAIMIAO_CLIP_TO_BORDER", True)
     clean_output = _env_flag("BAIMIAO_CLEAN_OUTPUT", True)
+    smooth_junctions = _env_flag("BAIMIAO_SMOOTH_JUNCTIONS", True)
     return LineDraftResult(
         output_path=str(output_path),
         width=width,
@@ -170,11 +187,21 @@ def generate_ai_baimiao(
             "api_input_path": str(api_input_path),
             "raw_output_path": str(raw_output_path),
             "structure_guide_path": str(guide_path),
+            "structure_guide_requested": _use_structure_guide(),
+            "structure_guide_used": guide_used,
             "cleaned": clean_output,
             "clip_to_border": clip_to_border,
             "aspect_restored": canvas.preserve_source_aspect,
             "line_repaired": clean_output and repair_lines,
             "line_repair_max_gap": _line_repair_max_gap() if repair_lines else 0,
+            "junctions_smoothed": clean_output and smooth_junctions,
+            "max_junction_thickness": _max_junction_thickness() if smooth_junctions else 0,
+            "api_input_bbox": _bbox_stats_to_dict(api_input_stats),
+            "guide_bbox": _bbox_stats_to_dict(guide_stats),
+            "raw_bbox": _bbox_stats_to_dict(raw_stats),
+            "final_bbox": _bbox_stats_to_dict(final_stats),
+            "composition_delta": composition_delta,
+            "composition_warning": composition_warning,
         },
     )
 
@@ -306,9 +333,9 @@ def _post_baimiao_edit(
     data: dict,
     source_path: str,
     guide_path: str,
-) -> dict:
+) -> tuple[dict, bool]:
     try:
-        response = _post_baimiao_edit_without_status_check(
+        response, guide_used = _post_baimiao_edit_without_status_check(
             client=client,
             url=url,
             headers=headers,
@@ -317,7 +344,7 @@ def _post_baimiao_edit(
             guide_path=guide_path,
         )
         response.raise_for_status()
-        return response.json()
+        return response.json(), guide_used
     except httpx.HTTPStatusError as exc:
         raise RuntimeError(_format_image_api_error(exc.response)) from exc
     except httpx.HTTPError as exc:
@@ -331,9 +358,9 @@ def _post_baimiao_edit_without_status_check(
     data: dict,
     source_path: str,
     guide_path: str,
-) -> httpx.Response:
-    if os.getenv("BAIMIAO_USE_STRUCTURE_GUIDE", "false").lower() not in {"1", "true", "yes"}:
-        return _post_single_image_edit(client, url, headers, data, source_path)
+) -> tuple[httpx.Response, bool]:
+    if not _use_structure_guide():
+        return _post_single_image_edit(client, url, headers, data, source_path), False
 
     try:
         with open(source_path, "rb") as source_file, open(guide_path, "rb") as guide_file:
@@ -343,10 +370,10 @@ def _post_baimiao_edit_without_status_check(
             ]
             response = client.post(url, headers=headers, data=data, files=files)
     except httpx.HTTPError:
-        return _post_single_image_edit(client, url, headers, data, source_path)
+        return _post_single_image_edit(client, url, headers, data, source_path), False
     if response.status_code in {400, 413, 415, 422}:
-        return _post_single_image_edit(client, url, headers, data, source_path)
-    return response
+        return _post_single_image_edit(client, url, headers, data, source_path), False
+    return response, True
 
 
 def _post_single_image_edit(
@@ -439,6 +466,8 @@ def _clean_ai_line_art(
         clean = _solidify_line_art(clean)
     if _env_flag("BAIMIAO_REPAIR_LINES", True):
         clean = _repair_short_line_gaps(clean, _line_repair_max_gap())
+    if _env_flag("BAIMIAO_SMOOTH_JUNCTIONS", True):
+        clean = _smooth_junction_blobs(clean, _max_junction_thickness())
     if original_path and _env_flag("BAIMIAO_CLIP_TO_BORDER", True):
         clean = _restore_round_border_from_original(clean, original_path)
     clean = _restore_source_aspect(clean, canvas)
@@ -513,11 +542,122 @@ def _line_repair_max_gap() -> int:
     return max(0, int(os.getenv("BAIMIAO_LINE_REPAIR_MAX_GAP", "3")))
 
 
+def _max_junction_thickness() -> int:
+    return max(1, int(os.getenv("BAIMIAO_MAX_JUNCTION_THICKNESS", "3")))
+
+
+def _use_structure_guide() -> bool:
+    return _env_flag("BAIMIAO_USE_STRUCTURE_GUIDE", True)
+
+
 def _env_flag(name: str, default: bool) -> bool:
     value = os.getenv(name)
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _line_art_bbox_stats(path: str | Path, threshold: int = 245) -> BBoxStats:
+    return _image_bbox_stats(Image.open(path).convert("L"), threshold=threshold)
+
+
+def _image_bbox_stats(img: Image.Image, threshold: int = 245) -> BBoxStats:
+    source = img.convert("L")
+    width, height = source.size
+    pixels = source.load()
+    left = width
+    top = height
+    right = -1
+    bottom = -1
+    count = 0
+    for y in range(height):
+        for x in range(width):
+            if pixels[x, y] < threshold:
+                count += 1
+                left = min(left, x)
+                top = min(top, y)
+                right = max(right, x)
+                bottom = max(bottom, y)
+    if right < left or bottom < top:
+        return BBoxStats(bbox=None, size=(width, height), center=None, coverage=0.0, ratio=None)
+
+    bbox = (left, top, right + 1, bottom + 1)
+    bbox_width = bbox[2] - bbox[0]
+    bbox_height = bbox[3] - bbox[1]
+    center = ((bbox[0] + bbox[2]) / 2 / width, (bbox[1] + bbox[3]) / 2 / height)
+    coverage = (bbox_width * bbox_height) / max(1, width * height)
+    ratio = bbox_width / max(1, bbox_height)
+    return BBoxStats(bbox=bbox, size=(width, height), center=center, coverage=coverage, ratio=ratio)
+
+
+def _bbox_stats_to_dict(stats: BBoxStats) -> dict:
+    return {
+        "bbox": list(stats.bbox) if stats.bbox else None,
+        "size": list(stats.size),
+        "center": [round(stats.center[0], 5), round(stats.center[1], 5)] if stats.center else None,
+        "coverage": round(stats.coverage, 6),
+        "ratio": round(stats.ratio, 6) if stats.ratio is not None else None,
+    }
+
+
+def _composition_delta(reference: BBoxStats, candidate: BBoxStats) -> dict:
+    if not reference.bbox or not candidate.bbox or not reference.center or not candidate.center:
+        return {
+            "ratio_delta": None,
+            "center_delta": None,
+            "coverage_delta": None,
+        }
+    ratio_delta = abs((candidate.ratio or 0) - (reference.ratio or 0)) / max(0.001, reference.ratio or 0)
+    center_delta = max(
+        abs(candidate.center[0] - reference.center[0]),
+        abs(candidate.center[1] - reference.center[1]),
+    )
+    coverage_delta = abs(candidate.coverage - reference.coverage) / max(0.001, reference.coverage)
+    return {
+        "ratio_delta": round(ratio_delta, 6),
+        "center_delta": round(center_delta, 6),
+        "coverage_delta": round(coverage_delta, 6),
+    }
+
+
+def _composition_warning(delta: dict) -> bool:
+    ratio_delta = delta.get("ratio_delta")
+    center_delta = delta.get("center_delta")
+    coverage_delta = delta.get("coverage_delta")
+    if ratio_delta is None or center_delta is None or coverage_delta is None:
+        return True
+    return bool(ratio_delta > 0.04 or center_delta > 0.03 or coverage_delta > 0.05)
+
+
+def _smooth_junction_blobs(img: Image.Image, max_thickness: int) -> Image.Image:
+    clean = img.convert("L").point(lambda value: 0 if value < 128 else 255)
+    width, height = clean.size
+    pixels = clean.load()
+    result = clean.copy()
+    result_pixels = result.load()
+    max_thickness = max(1, min(7, max_thickness))
+    required_black = 8 if max_thickness <= 3 else 7
+    corner_offsets = ((-1, -1), (1, -1), (-1, 1), (1, 1))
+
+    for y in range(1, height - 1):
+        for x in range(1, width - 1):
+            black_count = 0
+            for ny in range(y - 1, y + 2):
+                for nx in range(x - 1, x + 2):
+                    if pixels[nx, ny] == 0:
+                        black_count += 1
+            if black_count < required_black:
+                continue
+            for dx, dy in corner_offsets:
+                cx = x + dx
+                cy = y + dy
+                if pixels[cx, cy] != 0:
+                    continue
+                horizontal = pixels[cx - dx, cy] == 0 and 0 <= cx + dx < width and pixels[cx + dx, cy] == 0
+                vertical = pixels[cx, cy - dy] == 0 and 0 <= cy + dy < height and pixels[cx, cy + dy] == 0
+                if not horizontal and not vertical:
+                    result_pixels[cx, cy] = 255
+    return result
 
 
 def _solidify_line_art(img: Image.Image) -> Image.Image:

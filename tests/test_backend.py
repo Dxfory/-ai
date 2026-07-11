@@ -12,11 +12,17 @@ from backend.database import init_db
 from backend.services.baimiao_knowledge import BOOK_001_LINE_LOGIC, PAIR_REFERENCE_LINE_LOGIC
 from backend.services.line_draft import (
     BAIMIAO_PROMPT,
+    _bbox_stats_to_dict,
+    _composition_delta,
+    _composition_warning,
     _detect_artwork_region_mask,
+    _image_bbox_stats,
+    _post_baimiao_edit_without_status_check,
     _prepare_api_image,
     _repair_short_line_gaps,
     _resolve_generation_canvas,
     _resolve_image_size,
+    _smooth_junction_blobs,
     _restore_source_aspect,
     _restore_round_border_from_original,
 )
@@ -40,6 +46,7 @@ def test_baimiao_prompt_forbids_hallucinated_objects():
     assert "线稿不得越界" in BAIMIAO_PROMPT
     assert "补全必要结构线" not in BAIMIAO_PROMPT
     assert "鸟体等" not in BAIMIAO_PROMPT
+    assert "严禁放大、缩小、拉伸、压扁、平移或重新排布主体" in BAIMIAO_PROMPT
 
 
 def test_baimiao_prompt_includes_book_and_pair_learning_logic():
@@ -149,6 +156,92 @@ def test_repair_short_line_gaps_leaves_large_gap():
     repaired = _repair_short_line_gaps(img, 3)
 
     assert all(repaired.getpixel((x, 2)) == 255 for x in range(4, 9))
+
+
+def test_structure_guide_is_used_by_default(tmp_path, monkeypatch):
+    monkeypatch.delenv("BAIMIAO_USE_STRUCTURE_GUIDE", raising=False)
+    source_path = tmp_path / "source.png"
+    guide_path = tmp_path / "guide.png"
+    Image.new("RGB", (20, 20), "white").save(source_path)
+    Image.new("L", (20, 20), 255).save(guide_path)
+
+    class FakeResponse:
+        status_code = 200
+
+    class FakeClient:
+        def __init__(self):
+            self.file_counts = []
+
+        def post(self, url, headers, data, files):
+            self.file_counts.append(len(files) if isinstance(files, list) else len(files))
+            return FakeResponse()
+
+    client = FakeClient()
+    response, guide_used = _post_baimiao_edit_without_status_check(
+        client=client,
+        url="https://example.test/v1/images/edits",
+        headers={},
+        data={},
+        source_path=str(source_path),
+        guide_path=str(guide_path),
+    )
+
+    assert response.status_code == 200
+    assert guide_used is True
+    assert client.file_counts == [2]
+
+
+def test_bbox_stats_and_composition_warning_detect_scale_drift():
+    reference = Image.new("L", (100, 100), 255)
+    ImageDraw.Draw(reference).rectangle((20, 20, 80, 80), fill=0)
+    candidate = Image.new("L", (100, 100), 255)
+    ImageDraw.Draw(candidate).rectangle((30, 20, 70, 80), fill=0)
+
+    reference_stats = _image_bbox_stats(reference)
+    candidate_stats = _image_bbox_stats(candidate)
+    delta = _composition_delta(reference_stats, candidate_stats)
+
+    assert _bbox_stats_to_dict(reference_stats)["bbox"] == [20, 20, 81, 81]
+    assert delta["ratio_delta"] > 0.04
+    assert _composition_warning(delta) is True
+
+
+def test_composition_warning_allows_matching_boxes():
+    reference = Image.new("L", (100, 100), 255)
+    ImageDraw.Draw(reference).rectangle((20, 20, 80, 80), fill=0)
+    candidate = Image.new("L", (100, 100), 255)
+    ImageDraw.Draw(candidate).rectangle((21, 20, 81, 80), fill=0)
+
+    delta = _composition_delta(_image_bbox_stats(reference), _image_bbox_stats(candidate))
+
+    assert _composition_warning(delta) is False
+
+
+def test_smooth_junction_blobs_removes_corner_bulk_without_erasing_cross():
+    img = Image.new("L", (9, 9), 255)
+    draw = ImageDraw.Draw(img)
+    draw.line((1, 4, 7, 4), fill=0)
+    draw.line((4, 1, 4, 7), fill=0)
+    draw.rectangle((3, 3, 5, 5), fill=0)
+
+    smoothed = _smooth_junction_blobs(img, 3)
+
+    assert smoothed.getpixel((4, 4)) == 0
+    assert smoothed.getpixel((1, 4)) == 0
+    assert smoothed.getpixel((4, 1)) == 0
+    assert smoothed.getpixel((3, 3)) == 255
+
+
+def test_smooth_junction_blobs_keeps_thin_cross():
+    img = Image.new("L", (9, 9), 255)
+    draw = ImageDraw.Draw(img)
+    draw.line((1, 4, 7, 4), fill=0)
+    draw.line((4, 1, 4, 7), fill=0)
+
+    smoothed = _smooth_junction_blobs(img, 3)
+
+    assert all(smoothed.getpixel((x, 4)) == 0 for x in range(1, 8))
+    assert all(smoothed.getpixel((4, y)) == 0 for y in range(1, 8))
 
 
 def test_round_artwork_border_clips_generated_lines(tmp_path):
