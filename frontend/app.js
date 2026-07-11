@@ -65,7 +65,7 @@ $("uploadForm").addEventListener("submit", async (event) => {
     });
     setImage("referencePreview", state.reference.file_url);
     $("draftForm").hidden = false;
-    setStatus("参考图已上传。建议优先使用 AI 白描稿；本地边缘预览只用于临时检查。");
+    setStatus("参考图已上传。建议优先使用精准提线白描，保持原图构图与尺寸。");
   } catch (error) {
     setStatus(`上传失败：${error.message}`);
   }
@@ -75,7 +75,12 @@ $("draftForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!state.reference) return;
   const provider = $("provider").value;
-  setStatus(provider === "ai_baimiao" ? "正在生成 AI 白描稿..." : "正在生成本地边缘预览...");
+  const providerLabels = {
+    source_locked_baimiao: "精准提线白描",
+    local_edge_preview: "本地边缘预览",
+    ai_baimiao: "AI 重绘实验",
+  };
+  setStatus(`正在生成${providerLabels[provider] || "线稿"}...`);
   try {
     state.draft = await jsonFetch("/api/v1/line-drafts/generate", {
       method: "POST",
@@ -92,9 +97,12 @@ $("draftForm").addEventListener("submit", async (event) => {
     $("downloadDraft").href = state.draft.file_url;
     $("downloadDraft").hidden = false;
     $("createSessionButton").hidden = false;
-    setStatus(provider === "ai_baimiao"
-      ? "AI 白描稿已生成。可以下载，也可以创建分步练习。"
-      : "本地边缘预览已生成。它不是正式白描稿，只适合作为临时草稿。");
+    const statusMessages = {
+      source_locked_baimiao: "精准提线白描已生成。它直接从原图提取线条，不重绘构图。",
+      local_edge_preview: "本地边缘预览已生成。它不是正式白描稿，只适合作为临时草稿。",
+      ai_baimiao: "AI 重绘实验已生成。请重点检查构图是否偏移。",
+    };
+    setStatus(statusMessages[provider] || "线稿已生成。");
   } catch (error) {
     setStatus(`生成失败：${error.message}`);
   }

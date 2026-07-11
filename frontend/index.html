@@ -29,13 +29,14 @@
           <form id="draftForm" class="control-group" hidden>
             <label class="label" for="provider">生成方式</label>
             <select id="provider">
-              <option value="ai_baimiao">AI 白描稿</option>
+              <option value="source_locked_baimiao">精准提线白描</option>
               <option value="local_edge_preview">本地边缘预览</option>
+              <option value="ai_baimiao">AI 重绘实验</option>
             </select>
-            <label class="label" for="lineStrength">线条强度 <span id="lineStrengthValue">3</span></label>
-            <input id="lineStrength" type="range" min="1" max="5" value="3" />
-            <label class="label" for="detailLevel">细节保留 <span id="detailLevelValue">3</span></label>
-            <input id="detailLevel" type="range" min="1" max="5" value="3" />
+            <label class="label" for="lineStrength">线条强度 <span id="lineStrengthValue">5</span></label>
+            <input id="lineStrength" type="range" min="1" max="5" value="5" />
+            <label class="label" for="detailLevel">细节保留 <span id="detailLevelValue">1</span></label>
+            <input id="detailLevel" type="range" min="1" max="5" value="1" />
             <label class="checkbox">
               <input id="preserveTexture" type="checkbox" checked />
               保留花瓣、叶脉或羽毛纹理

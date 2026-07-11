@@ -93,6 +93,61 @@ def generate_line_draft(
     )
 
 
+def generate_source_locked_baimiao(
+    source_path: str,
+    output_dir: str,
+    draft_id: str,
+    line_strength: int = 5,
+    detail_level: int = 1,
+    preserve_texture: bool = True,
+) -> LineDraftResult:
+    """直接从原图像素提取已有墨线，严格保持原图尺寸和构图。"""
+    os.makedirs(output_dir, exist_ok=True)
+    original = ImageOps.exif_transpose(Image.open(source_path)).convert("RGB")
+    ink_threshold = _source_locked_ink_threshold(line_strength, detail_level)
+    draft, removed_noise_pixels = _extract_source_locked_ink_lines(
+        original,
+        ink_threshold=ink_threshold,
+        detail_level=detail_level,
+        preserve_texture=preserve_texture,
+    )
+    artwork_mask = _detect_artwork_region_mask(original)
+    artwork_mask_used = artwork_mask is not None
+    if artwork_mask:
+        before = _count_black_pixels(draft)
+        draft = _clear_outside_artwork_mask(draft, artwork_mask)
+        removed_noise_pixels += max(0, before - _count_black_pixels(draft))
+        draft.paste(0, mask=_mask_outline(artwork_mask))
+
+    if line_strength >= 5:
+        draft = _repair_short_line_gaps(draft, 1)
+    smoothed = _smooth_junction_blobs_with_count(draft, _max_junction_thickness())
+    draft = smoothed[0]
+
+    out_path = Path(output_dir) / f"{draft_id}.png"
+    draft.save(out_path)
+    width, height = draft.size
+    stats = _image_bbox_stats(draft)
+    return LineDraftResult(
+        output_path=str(out_path),
+        width=width,
+        height=height,
+        parameters={
+            "provider": "source_locked_baimiao",
+            "source_locked": True,
+            "source_size": [original.width, original.height],
+            "artwork_mask_used": artwork_mask_used,
+            "ink_threshold": ink_threshold,
+            "line_strength": line_strength,
+            "detail_level": detail_level,
+            "preserve_texture": preserve_texture,
+            "removed_noise_pixels": removed_noise_pixels,
+            "smoothed_junction_pixels": smoothed[1],
+            "final_bbox": _bbox_stats_to_dict(stats),
+        },
+    )
+
+
 def generate_ai_baimiao(
     source_path: str,
     output_dir: str,
@@ -538,6 +593,86 @@ def _repair_short_line_gaps(img: Image.Image, max_gap: int) -> Image.Image:
     return result
 
 
+def _source_locked_ink_threshold(line_strength: int, detail_level: int) -> int:
+    return max(34, min(112, 78 + (line_strength - 3) * 8 - (detail_level - 1) * 6))
+
+
+def _extract_source_locked_ink_lines(
+    original: Image.Image,
+    ink_threshold: int,
+    detail_level: int,
+    preserve_texture: bool,
+) -> tuple[Image.Image, int]:
+    rgb = original.convert("RGB")
+    width, height = rgb.size
+    pixels = rgb.load()
+    gray = ImageOps.grayscale(rgb)
+    background_radius = max(9, min(41, (min(width, height) // 28) | 1))
+    background = gray.filter(ImageFilter.GaussianBlur(radius=background_radius))
+    gray_pixels = gray.load()
+    bg_pixels = background.load()
+
+    draft = Image.new("L", rgb.size, 255)
+    draft_pixels = draft.load()
+    min_darkness = max(24, 60 - detail_level * 7)
+    contrast_threshold = max(18, ink_threshold - detail_level * 4)
+    dark_cutoff = min(125, 92 + detail_level * 9)
+
+    for y in range(height):
+        for x in range(width):
+            r, g, b = pixels[x, y]
+            brightness = gray_pixels[x, y]
+            local_contrast = bg_pixels[x, y] - brightness
+            channel_spread = max(r, g, b) - min(r, g, b)
+            is_neutral_ink = channel_spread < 74 and brightness < dark_cutoff
+            is_strong_dark = brightness < min_darkness
+            if local_contrast >= contrast_threshold and (is_neutral_ink or is_strong_dark):
+                draft_pixels[x, y] = 0
+
+    draft = _remove_isolated_black_pixels(draft, keep_small_marks=preserve_texture)
+    before = _count_black_pixels(draft)
+    if detail_level <= 1:
+        draft = draft.filter(ImageFilter.MedianFilter(size=3))
+        draft = draft.point(lambda value: 0 if value < 128 else 255)
+    removed_noise_pixels = max(0, before - _count_black_pixels(draft))
+    return draft, removed_noise_pixels
+
+
+def _remove_isolated_black_pixels(img: Image.Image, keep_small_marks: bool = True) -> Image.Image:
+    source = img.convert("L").point(lambda value: 0 if value < 128 else 255)
+    pixels = source.load()
+    width, height = source.size
+    result = source.copy()
+    result_pixels = result.load()
+    minimum_neighbors = 1 if keep_small_marks else 2
+    for y in range(1, height - 1):
+        for x in range(1, width - 1):
+            if pixels[x, y] != 0:
+                continue
+            neighbors = 0
+            for ny in range(y - 1, y + 2):
+                for nx in range(x - 1, x + 2):
+                    if nx == x and ny == y:
+                        continue
+                    if pixels[nx, ny] == 0:
+                        neighbors += 1
+            if neighbors < minimum_neighbors:
+                result_pixels[x, y] = 255
+    return result
+
+
+def _count_black_pixels(img: Image.Image) -> int:
+    source = img.convert("L")
+    pixels = source.load()
+    width, height = source.size
+    count = 0
+    for y in range(height):
+        for x in range(width):
+            if pixels[x, y] < 128:
+                count += 1
+    return count
+
+
 def _line_repair_max_gap() -> int:
     return max(0, int(os.getenv("BAIMIAO_LINE_REPAIR_MAX_GAP", "3")))
 
@@ -630,6 +765,10 @@ def _composition_warning(delta: dict) -> bool:
 
 
 def _smooth_junction_blobs(img: Image.Image, max_thickness: int) -> Image.Image:
+    return _smooth_junction_blobs_with_count(img, max_thickness)[0]
+
+
+def _smooth_junction_blobs_with_count(img: Image.Image, max_thickness: int) -> tuple[Image.Image, int]:
     clean = img.convert("L").point(lambda value: 0 if value < 128 else 255)
     width, height = clean.size
     pixels = clean.load()
@@ -657,7 +796,7 @@ def _smooth_junction_blobs(img: Image.Image, max_thickness: int) -> Image.Image:
                 vertical = pixels[cx, cy - dy] == 0 and 0 <= cy + dy < height and pixels[cx, cy + dy] == 0
                 if not horizontal and not vertical:
                     result_pixels[cx, cy] = 255
-    return result
+    return result, max(0, _count_black_pixels(clean) - _count_black_pixels(result))
 
 
 def _solidify_line_art(img: Image.Image) -> Image.Image:

@@ -18,7 +18,12 @@ from ..schemas import (
     PracticeStepRunSchema,
     ReferenceUploadSchema,
 )
-from ..services.line_draft import generate_ai_baimiao, generate_line_draft, generate_overlay
+from ..services.line_draft import (
+    generate_ai_baimiao,
+    generate_line_draft,
+    generate_overlay,
+    generate_source_locked_baimiao,
+)
 from shared.utils import generate_uuid, validate_image_format
 
 router = APIRouter(prefix="/api/v1", tags=["gongbi-practice"])
@@ -107,7 +112,16 @@ def create_line_draft(req: LineDraftGenerateRequest, db: Session = Depends(get_d
     rel_dir = Path("line_drafts")
     output_dir = str(Path(settings.UPLOAD_DIR) / rel_dir)
     try:
-        if req.provider == "ai_baimiao":
+        if req.provider == "source_locked_baimiao":
+            result = generate_source_locked_baimiao(
+                reference.file_path,
+                output_dir,
+                draft_id,
+                line_strength=req.line_strength,
+                detail_level=req.detail_level,
+                preserve_texture=req.preserve_texture,
+            )
+        elif req.provider == "ai_baimiao":
             result = generate_ai_baimiao(
                 reference.file_path,
                 output_dir,

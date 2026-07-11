@@ -15,6 +15,7 @@ from backend.services.line_draft import (
     _bbox_stats_to_dict,
     _composition_delta,
     _composition_warning,
+    generate_source_locked_baimiao,
     _detect_artwork_region_mask,
     _image_bbox_stats,
     _post_baimiao_edit_without_status_check,
@@ -244,6 +245,74 @@ def test_smooth_junction_blobs_keeps_thin_cross():
     assert all(smoothed.getpixel((4, y)) == 0 for y in range(1, 8))
 
 
+def test_source_locked_baimiao_preserves_source_size_and_bbox(tmp_path):
+    source_path = tmp_path / "source.png"
+    output_dir = tmp_path / "drafts"
+    img = Image.new("RGB", (220, 180), (238, 220, 190))
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle((20, 15, 200, 165), radius=35, fill=(177, 130, 76))
+    draw.line((45, 120, 170, 55), fill=(20, 18, 16), width=3)
+    draw.ellipse((75, 55, 135, 115), outline=(18, 16, 14), width=3)
+    img.save(source_path)
+
+    result = generate_source_locked_baimiao(
+        str(source_path),
+        str(output_dir),
+        "locked",
+        line_strength=5,
+        detail_level=1,
+    )
+
+    draft = Image.open(result.output_path).convert("L")
+    stats = _image_bbox_stats(draft, threshold=128)
+    assert draft.size == (220, 180)
+    assert result.width == 220
+    assert result.height == 180
+    assert result.parameters["source_locked"] is True
+    assert result.parameters["source_size"] == [220, 180]
+    assert stats.bbox is not None
+    assert stats.bbox[0] >= 15
+    assert stats.bbox[1] >= 10
+    assert stats.bbox[2] <= 205
+    assert stats.bbox[3] <= 170
+
+
+def test_source_locked_baimiao_ignores_detached_side_strip(tmp_path):
+    source_path = tmp_path / "strip.png"
+    output_dir = tmp_path / "drafts"
+    img = Image.new("RGB", (260, 200), (244, 230, 205))
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle((20, 15, 205, 180), radius=40, fill=(175, 128, 76))
+    draw.ellipse((65, 55, 150, 135), outline=(15, 15, 15), width=3)
+    draw.rectangle((230, 25, 245, 165), fill=(42, 38, 32))
+    img.save(source_path)
+
+    result = generate_source_locked_baimiao(str(source_path), str(output_dir), "locked")
+    draft = Image.open(result.output_path).convert("L")
+
+    assert result.parameters["artwork_mask_used"] is True
+    assert all(draft.getpixel((x, y)) == 255 for x in range(226, 250) for y in range(20, 170))
+
+
+def test_source_locked_baimiao_keeps_true_dot_marks(tmp_path):
+    source_path = tmp_path / "dots.png"
+    output_dir = tmp_path / "drafts"
+    img = Image.new("RGB", (120, 100), (230, 210, 180))
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle((10, 8, 110, 90), radius=22, fill=(175, 128, 76))
+    draw.ellipse((45, 35, 50, 40), fill=(10, 10, 10))
+    draw.ellipse((58, 36, 63, 41), fill=(10, 10, 10))
+    draw.line((20, 75, 100, 25), fill=(15, 15, 15), width=2)
+    img.save(source_path)
+
+    result = generate_source_locked_baimiao(str(source_path), str(output_dir), "locked")
+    draft = Image.open(result.output_path).convert("L")
+
+    assert result.parameters["smoothed_junction_pixels"] >= 0
+    assert any(draft.getpixel((x, y)) == 0 for x in range(44, 52) for y in range(34, 42))
+    assert any(draft.getpixel((x, y)) == 0 for x in range(57, 65) for y in range(35, 43))
+
+
 def test_round_artwork_border_clips_generated_lines(tmp_path):
     original_path = tmp_path / "original.png"
     original = Image.new("RGB", (400, 400), "white")
@@ -347,14 +416,17 @@ def test_gongbi_line_draft_practice_flow():
 
     draft_resp = client.post("/api/v1/line-drafts/generate", json={
         "reference_upload_id": reference["id"],
-        "line_strength": 3,
-        "detail_level": 3,
+        "line_strength": 5,
+        "detail_level": 1,
         "preserve_texture": True,
+        "provider": "source_locked_baimiao",
     })
     assert draft_resp.status_code == 200
     draft = draft_resp.json()
     assert draft["file_url"].endswith(".png")
     assert draft["metadata"]["width"] > 0
+    assert draft["provider"] == "source_locked_baimiao"
+    assert draft["metadata"]["source_locked"] is True
 
     session_resp = client.post("/api/v1/practice-sessions/", json={
         "reference_upload_id": reference["id"],
