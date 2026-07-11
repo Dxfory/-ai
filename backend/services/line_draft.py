@@ -594,7 +594,7 @@ def _repair_short_line_gaps(img: Image.Image, max_gap: int) -> Image.Image:
 
 
 def _source_locked_ink_threshold(line_strength: int, detail_level: int) -> int:
-    return max(34, min(112, 78 + (line_strength - 3) * 8 - (detail_level - 1) * 6))
+    return max(28, min(96, 62 + (line_strength - 3) * 7 - (detail_level - 1) * 5))
 
 
 def _extract_source_locked_ink_lines(
@@ -614,9 +614,9 @@ def _extract_source_locked_ink_lines(
 
     draft = Image.new("L", rgb.size, 255)
     draft_pixels = draft.load()
-    min_darkness = max(24, 60 - detail_level * 7)
-    contrast_threshold = max(18, ink_threshold - detail_level * 4)
-    dark_cutoff = min(125, 92 + detail_level * 9)
+    min_darkness = max(30, 74 - detail_level * 7)
+    contrast_threshold = max(14, ink_threshold - detail_level * 5)
+    dark_cutoff = min(145, 112 + detail_level * 8)
 
     for y in range(height):
         for x in range(width):
@@ -624,16 +624,14 @@ def _extract_source_locked_ink_lines(
             brightness = gray_pixels[x, y]
             local_contrast = bg_pixels[x, y] - brightness
             channel_spread = max(r, g, b) - min(r, g, b)
-            is_neutral_ink = channel_spread < 74 and brightness < dark_cutoff
-            is_strong_dark = brightness < min_darkness
-            if local_contrast >= contrast_threshold and (is_neutral_ink or is_strong_dark):
+            is_neutral_ink = channel_spread < 86 and brightness < dark_cutoff
+            is_strong_dark = brightness < min_darkness and channel_spread < 110
+            is_local_ink_edge = local_contrast >= contrast_threshold and brightness < dark_cutoff
+            if is_strong_dark or (is_neutral_ink and is_local_ink_edge):
                 draft_pixels[x, y] = 0
 
     draft = _remove_isolated_black_pixels(draft, keep_small_marks=preserve_texture)
     before = _count_black_pixels(draft)
-    if detail_level <= 1:
-        draft = draft.filter(ImageFilter.MedianFilter(size=3))
-        draft = draft.point(lambda value: 0 if value < 128 else 255)
     removed_noise_pixels = max(0, before - _count_black_pixels(draft))
     return draft, removed_noise_pixels
 

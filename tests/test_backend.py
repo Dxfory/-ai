@@ -313,6 +313,32 @@ def test_source_locked_baimiao_keeps_true_dot_marks(tmp_path):
     assert any(draft.getpixel((x, y)) == 0 for x in range(57, 65) for y in range(35, 43))
 
 
+def test_source_locked_baimiao_keeps_faint_scanned_ink_lines(tmp_path):
+    source_path = tmp_path / "faint.png"
+    output_dir = tmp_path / "drafts"
+    img = Image.new("RGB", (240, 200), (224, 202, 170))
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle((20, 12, 220, 188), radius=45, fill=(174, 133, 82))
+    draw.arc((24, 18, 216, 186), 0, 360, fill=(68, 61, 54), width=2)
+    draw.line((45, 145, 195, 55), fill=(72, 64, 58), width=2)
+    draw.ellipse((90, 70, 150, 125), outline=(76, 68, 60), width=2)
+    img.save(source_path)
+
+    result = generate_source_locked_baimiao(
+        str(source_path),
+        str(output_dir),
+        "locked",
+        line_strength=5,
+        detail_level=1,
+    )
+    draft = Image.open(result.output_path).convert("L")
+    black_pixels = sum(1 for value in draft.getdata() if value < 128)
+
+    assert draft.size == (240, 200)
+    assert black_pixels > 400
+    assert result.parameters["ink_threshold"] <= 80
+
+
 def test_round_artwork_border_clips_generated_lines(tmp_path):
     original_path = tmp_path / "original.png"
     original = Image.new("RGB", (400, 400), "white")
