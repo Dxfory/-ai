@@ -527,7 +527,11 @@ def _repair_short_line_gaps(img: Image.Image, max_gap: int) -> Image.Image:
                             clear = False
                             break
                         between.append((mid_x, mid_y))
-                    if clear:
+                    # 只在两端确实像同一条线的断口时才填：要求起点和终点
+                    # 沿该方向的反方向也有连续黑像素（即两端都是线段延伸，
+                    # 而不是孤立的交叉点），避免在 T 字/十字交叉处盲目连填。
+                    if clear and _is_line_segment_end(pixels, width, height, x, y, -dx, -dy) \
+                            and _is_line_segment_end(pixels, width, height, end_x, end_y, dx, dy):
                         additions.update(between)
                     break
 
@@ -538,8 +542,31 @@ def _repair_short_line_gaps(img: Image.Image, max_gap: int) -> Image.Image:
     return result
 
 
+def _is_line_segment_end(
+    pixels,
+    width: int,
+    height: int,
+    x: int,
+    y: int,
+    dx: int,
+    dy: int,
+    min_run: int = 2,
+) -> bool:
+    """判断 (x,y) 沿 (dx,dy) 方向是否存在连续黑像素，确认它是线段端点而非孤立点。"""
+    run = 0
+    for step in range(1, min_run + 1):
+        nx = x + dx * step
+        ny = y + dy * step
+        if nx < 0 or nx >= width or ny < 0 or ny >= height:
+            break
+        if pixels[nx, ny] != 0:
+            break
+        run += 1
+    return run >= min_run
+
+
 def _line_repair_max_gap() -> int:
-    return max(0, int(os.getenv("BAIMIAO_LINE_REPAIR_MAX_GAP", "3")))
+    return max(0, int(os.getenv("BAIMIAO_LINE_REPAIR_MAX_GAP", "2")))
 
 
 def _max_junction_thickness() -> int:
