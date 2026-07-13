@@ -66,6 +66,30 @@ class LineDraftSchema(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
 
 
+class FenranGenerateRequest(BaseModel):
+    reference_upload_id: str
+    line_draft_id: str
+    subject_hint: str = ""
+    palette_hint: List[str] = Field(default_factory=list)
+    step_count: int = Field(default=4, ge=2, le=5)
+
+
+class FenranStepSchema(BaseModel):
+    step_num: int
+    title: str
+    instruction: str
+    image_url: str
+
+
+class FenranResultSchema(BaseModel):
+    id: str
+    reference_upload_id: str
+    line_draft_id: str
+    preview_url: str
+    steps: List[FenranStepSchema] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
+
+
 class PracticeSessionCreateRequest(BaseModel):
     reference_upload_id: str
     line_draft_id: str

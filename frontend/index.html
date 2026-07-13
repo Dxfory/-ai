@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>原画转工笔白描</title>
+    <title>原画转白描与分染试用</title>
     <link rel="stylesheet" href="/app/styles.css" />
   </head>
   <body>
@@ -13,8 +13,8 @@
           <div class="brand">
             <span class="mark">线</span>
             <div>
-              <h1>原画转工笔白描</h1>
-              <p>上传原画，输出白底黑线白描稿。</p>
+              <h1>白描与分染试用</h1>
+              <p>上传原画，先生成白描稿，再生成独立分染稿。</p>
             </div>
           </div>
 
@@ -26,6 +26,18 @@
 
           <form id="draftForm" class="control-group" hidden>
             <button type="submit">生成白描稿</button>
+          </form>
+
+          <form id="fenranForm" class="control-group" hidden>
+            <label class="label" for="subjectHint">分染对象</label>
+            <select id="subjectHint">
+              <option value="">自动识别原画色彩</option>
+              <option value="花瓣">偏向花瓣</option>
+              <option value="叶片">偏向叶片</option>
+              <option value="枝干">偏向枝干</option>
+              <option value="鸟体">偏向鸟体</option>
+            </select>
+            <button type="submit">生成分染稿</button>
           </form>
 
           <p id="status" class="status">等待上传原画。</p>
@@ -42,7 +54,14 @@
               <img id="draftPreview" alt="" />
               <a id="downloadDraft" class="download" href="#" download hidden>下载白描稿</a>
             </figure>
+            <figure>
+              <figcaption>分染稿</figcaption>
+              <img id="fenranPreview" alt="" />
+              <a id="downloadFenran" class="download" href="#" download hidden>下载分染稿</a>
+            </figure>
           </div>
+          <section id="colorReport" class="color-report" hidden></section>
+          <section id="fenranSteps" class="steps" hidden></section>
         </section>
       </section>
     </main>
