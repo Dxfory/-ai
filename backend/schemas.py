@@ -66,6 +66,22 @@ class LineDraftSchema(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
 
 
+class FenranTrainingRenderRequest(BaseModel):
+    reference_upload_id: str
+    line_draft_id: str
+    sample_id: str = ""
+    teaching_goal: str = ""
+
+
+class FenranTrainingRenderSchema(BaseModel):
+    sample_id: str
+    reference_upload_id: str
+    line_draft_id: str
+    file_url: str
+    metadata: dict = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=datetime.now)
+
+
 class PracticeSessionCreateRequest(BaseModel):
     reference_upload_id: str
     line_draft_id: str

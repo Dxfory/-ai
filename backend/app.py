@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .database import init_db
-from .routes import artworks, assets, courses, practice, submissions
+from .routes import artworks, assets, courses, fenran, practice, submissions
 from .schemas import HealthResponse
 
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
@@ -28,6 +28,7 @@ app.add_middleware(
 app.include_router(artworks.router)
 app.include_router(assets.router)
 app.include_router(courses.router)
+app.include_router(fenran.router)
 app.include_router(practice.router)
 app.include_router(submissions.router)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")

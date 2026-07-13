@@ -198,3 +198,17 @@ figure img:not([src]) {
     grid-template-columns: 1fr;
   }
 }
+
+.secondary-button {
+  background: #6f624f;
+}
+
+.secondary-button:hover {
+  background: #514637;
+}
+
+@media (min-width: 1120px) {
+  .stage > .preview-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
