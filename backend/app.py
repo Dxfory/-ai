@@ -9,6 +9,7 @@ from .config import settings
 from .database import init_db
 from .routes import artworks, assets, courses, fenran, practice, submissions
 from .schemas import HealthResponse
+from .shise_zhaoran.api import router as shise_zhaoran_router
 
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 
@@ -29,6 +30,7 @@ app.include_router(artworks.router)
 app.include_router(assets.router)
 app.include_router(courses.router)
 app.include_router(fenran.router)
+app.include_router(shise_zhaoran_router)
 app.include_router(practice.router)
 app.include_router(submissions.router)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")

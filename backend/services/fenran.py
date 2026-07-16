@@ -202,9 +202,14 @@ class _FenranConfig:
 
 
 def _resolve_config() -> _FenranConfig:
-    api_key = os.getenv("FENRAN_API_KEY") or os.getenv("OPENAI_API_KEY")
+    api_key = (
+        os.getenv("FENRAN_API_KEY")
+        or os.getenv("BAIMIAO_API_KEY")
+        or os.getenv("OPENAI_API_KEY")
+    )
     base_url = (
         os.getenv("FENRAN_API_BASE")
+        or os.getenv("BAIMIAO_API_BASE")
         or os.getenv("OPENAI_BASE_URL")
         or os.getenv("OPENAI_API_BASE")
         or DEFAULT_API_BASE
@@ -217,7 +222,7 @@ def _resolve_config() -> _FenranConfig:
 
 def _render_fenran_with_openai_compatible_api(*, request: dict, api_key: str | None, base_url: str) -> dict:
     if not api_key:
-        raise RuntimeError("Missing FENRAN_API_KEY or OPENAI_API_KEY")
+        raise RuntimeError("Missing BAIMIAO_API_KEY, FENRAN_API_KEY, or OPENAI_API_KEY")
 
     url = f"{base_url}/images/edits"
     headers = {"Authorization": f"Bearer {api_key}"}

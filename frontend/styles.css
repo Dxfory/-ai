@@ -21,8 +21,14 @@ body {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
+}
+
+[hidden] {
+  display: none !important;
 }
 
 button {
@@ -137,6 +143,20 @@ input[type="file"] {
   background: #fff;
 }
 
+input[type="text"],
+select,
+textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  padding: 9px;
+  background: #fff;
+  color: var(--ink);
+}
+
+textarea {
+  resize: vertical;
+}
+
 .checkbox {
   display: flex;
   gap: 8px;
@@ -150,6 +170,17 @@ input[type="file"] {
   padding: 12px;
   background: var(--wash);
   line-height: 1.45;
+}
+
+.compact-note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.required-fixing {
+  color: #8a3322;
+  font-weight: 700;
 }
 
 .preview-grid {
@@ -190,6 +221,108 @@ figure img:not([src]) {
   margin: 0 12px 12px;
   color: var(--accent-strong);
   font-weight: 700;
+}
+
+.registration-area {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+.registration-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.registration-toolbar input[type="range"] {
+  width: min(260px, 100%);
+}
+
+.registration-viewer {
+  position: relative;
+  width: 100%;
+  min-height: 520px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.registration-viewer img,
+.registration-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.registration-line-layer {
+  opacity: 0.7;
+  mix-blend-mode: multiply;
+}
+
+.registration-svg {
+  pointer-events: auto;
+}
+
+.registration-point {
+  fill: #1d7a4d;
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.shise-plan {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 16px;
+}
+
+.shise-plan h2 {
+  font-size: 18px;
+  margin-bottom: 10px;
+}
+
+.plan-ready,
+.plan-blocked,
+.plan-warning {
+  padding: 9px 10px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.plan-ready {
+  background: var(--wash);
+  color: var(--accent-strong);
+}
+
+.plan-blocked,
+.plan-warning {
+  background: #fff1ed;
+  color: #8a3322;
+}
+
+.plan-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+}
+
+.plan-list article {
+  padding: 11px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.plan-list p {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 @media (max-width: 880px) {

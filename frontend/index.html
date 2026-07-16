@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>工笔花鸟白描与分染教学</title>
-    <link rel="stylesheet" href="/app/styles.css" />
+    <title>工笔花鸟分步教学</title>
+    <link rel="stylesheet" href="/app/styles.css?v=20260716-shise" />
   </head>
   <body>
     <main class="shell">
@@ -13,8 +13,8 @@
           <div class="brand">
             <span class="mark">线</span>
             <div>
-              <h1>工笔花鸟教学</h1>
-              <p>上传原画，先得到白描，再进入分染教学示范。</p>
+              <h1>工笔花鸟分步教学</h1>
+              <p>白描、分染、水色罩染与石色罩染。</p>
             </div>
           </div>
 
@@ -53,7 +53,36 @@
           <div id="fenranControls" class="control-group" hidden>
             <label class="label" for="fenranGoal">分染教学目标</label>
             <input id="fenranGoal" type="text" value="先浅后深，保留纸白，按花瓣和叶片结构分染" />
+            <button id="openRegistrationButton" type="button" class="secondary-button">配准编辑</button>
             <button id="startFenranButton" type="button">开始分染</button>
+          </div>
+
+          <form id="shiseUpstreamForm" class="control-group">
+            <label class="label" for="shiseUpstreamFile">已有分染与水色罩染完成图</label>
+            <input id="shiseUpstreamFile" type="file" accept="image/*" />
+            <button type="submit" class="secondary-button">直接进入石色罩染</button>
+          </form>
+
+          <div id="shiseControls" class="control-group" hidden>
+            <strong>石色罩染</strong>
+            <p id="shiseInputMeta" class="compact-note"></p>
+            <label class="label" for="shiseMedium">绘画媒介</label>
+            <select id="shiseMedium">
+              <option value="paper">纸本</option>
+              <option value="silk">绢本</option>
+            </select>
+            <label id="shiseFixingLabel" class="checkbox">
+              <input id="shiseFixing" type="checkbox" />
+              已完成胶矾水固定并待干
+            </label>
+            <p id="shiseFixingNote" class="compact-note"></p>
+            <label class="label" for="shiseHints">画面对象</label>
+            <input id="shiseHints" type="text" value="正叶，反叶，未成熟果，枝干" />
+            <label class="label" for="shiseTextbookNotes">教材明确规则</label>
+            <textarea id="shiseTextbookNotes" rows="3" placeholder="例如：本课反叶使用五绿"></textarea>
+            <label class="label" for="shiseGoal">本次目标</label>
+            <input id="shiseGoal" type="text" value="薄罩石色，保留分染明暗、墨线与对象结构" />
+            <button id="startShiseButton" type="button">生成石色罩染图</button>
           </div>
 
           <button id="createSessionButton" hidden>创建分步练习</button>
@@ -76,7 +105,29 @@
               <img id="fenranPreview" alt="" />
               <a id="downloadFenran" class="download" href="#" download hidden>下载分染图</a>
             </figure>
+            <figure>
+              <figcaption>石色罩染完成图</figcaption>
+              <img id="shisePreview" alt="" />
+              <a id="downloadShise" class="download" href="#" download hidden>下载石色罩染图</a>
+            </figure>
           </div>
+
+          <section id="registrationArea" class="registration-area" hidden>
+            <div class="registration-toolbar">
+              <label class="label" for="registrationOpacity">白描透明度</label>
+              <input id="registrationOpacity" type="range" min="0" max="100" value="70" />
+              <button id="autoRegistrationButton" type="button" class="secondary-button">重新配准</button>
+              <button id="approveRegistrationButton" type="button">保存配准版本</button>
+            </div>
+            <div id="registrationViewer" class="registration-viewer">
+              <img id="registrationOriginal" alt="" />
+              <img id="registrationBaimiao" class="registration-line-layer" alt="" />
+              <svg id="registrationSvg" class="registration-svg"></svg>
+            </div>
+            <p id="registrationMeta" class="status"></p>
+          </section>
+
+          <section id="shisePlan" class="shise-plan" hidden></section>
 
           <section id="practiceArea" class="practice" hidden>
             <div class="step-header">
@@ -122,6 +173,6 @@
         </section>
       </section>
     </main>
-    <script src="/app/app.js"></script>
+    <script src="/app/app.js?v=20260716-shise"></script>
   </body>
 </html>
