@@ -1,9 +1,11 @@
 const state = {
   reference: null,
   draft: null,
+  registration: null,
   fenran: null,
   session: null,
   currentStep: null,
+  registrationPoints: [],
 };
 
 const $ = (id) => document.getElementById(id);
@@ -17,11 +19,89 @@ function setImage(id, url) {
   img.src = `${url}?t=${Date.now()}`;
 }
 
+function computeRenderedRect(img) {
+  const box = img.getBoundingClientRect();
+  const naturalWidth = img.naturalWidth || 1;
+  const naturalHeight = img.naturalHeight || 1;
+  const scale = Math.min(box.width / naturalWidth, box.height / naturalHeight);
+  const width = naturalWidth * scale;
+  const height = naturalHeight * scale;
+  return {
+    x: box.left + (box.width - width) / 2,
+    y: box.top + (box.height - height) / 2,
+    width,
+    height,
+    scaleX: width / naturalWidth,
+    scaleY: height / naturalHeight,
+    naturalWidth,
+    naturalHeight,
+  };
+}
+
+function screenToCanonicalPoint(event, img) {
+  const rect = computeRenderedRect(img);
+  return {
+    x: Math.max(0, Math.min(rect.naturalWidth, (event.clientX - rect.x) / rect.scaleX)),
+    y: Math.max(0, Math.min(rect.naturalHeight, (event.clientY - rect.y) / rect.scaleY)),
+    renderedRect: rect,
+  };
+}
+
+function updateRegistrationSvg() {
+  const original = $("registrationOriginal");
+  const svg = $("registrationSvg");
+  if (!original.naturalWidth || !original.naturalHeight) return;
+  svg.setAttribute("viewBox", `0 0 ${original.naturalWidth} ${original.naturalHeight}`);
+  svg.innerHTML = state.registrationPoints.map((point, index) => (
+    `<circle class="registration-point" data-index="${index}" cx="${point.x}" cy="${point.y}" r="5"></circle>`
+  )).join("");
+}
+
+function renderRegistration(registration) {
+  state.registration = registration;
+  $("registrationArea").hidden = false;
+  setImage("registrationOriginal", state.reference.file_url);
+  setImage("registrationBaimiao", registration.registered_baimiao_image_uri);
+  $("registrationBaimiao").style.opacity = String(Number($("registrationOpacity").value) / 100);
+  $("registrationMeta").textContent = `配准状态：${registration.status}，坐标系：${registration.canonical_size.join(" x ")}，评分：${registration.registration_score}`;
+}
+
 function revealDraftActions() {
   $("downloadDraft").href = state.draft.file_url;
   $("downloadDraft").hidden = false;
   $("createSessionButton").hidden = false;
   $("fenranControls").hidden = false;
+}
+
+function renderFenranStages(fenran) {
+  const container = $("fenranStages");
+  const stages = fenran.stages || [];
+  container.hidden = stages.length === 0;
+  container.innerHTML = "";
+  stages.forEach((stage) => {
+    const article = document.createElement("article");
+    article.className = "fenran-stage";
+    const heading = document.createElement("div");
+    heading.className = "fenran-stage-heading";
+    const title = document.createElement("h3");
+    title.textContent = stage.title;
+    const meta = document.createElement("p");
+    const validationScore = stage.validation && typeof stage.validation.score === "number"
+      ? ` ${Math.round(stage.validation.score * 100)}分`
+      : "";
+    meta.textContent = `${stage.technique} · ${stage.pigments.join("、") || "按原画底色"} · 校验：${stage.status}${validationScore}`;
+    heading.append(title, meta);
+    const image = document.createElement("img");
+    image.alt = stage.title;
+    image.src = `${stage.file_url}?t=${Date.now()}`;
+    const download = document.createElement("a");
+    download.className = "download";
+    download.href = stage.file_url;
+    download.download = "";
+    download.textContent = `下载${stage.title}`;
+    article.append(heading, image, download);
+    container.append(article);
+  });
 }
 
 function renderStep() {
@@ -41,11 +121,43 @@ function renderStep() {
   if (active.overlay_image_url) setImage("overlayPreview", active.overlay_image_url);
 }
 
+async function createRegistrationCandidate() {
+  if (!state.draft) return null;
+  setStatus("正在生成配准审核图...");
+  state.registration = await jsonFetch(`/api/v1/registrations/line-drafts/${state.draft.id}/auto`, {
+    method: "POST",
+  });
+  renderRegistration(state.registration);
+  setStatus("配准审核图已生成。请检查原画与白描是否对齐，确认后保存配准版本。");
+  return state.registration;
+}
+
+async function approveRegistrationCandidate() {
+  if (!state.draft || !state.registration) return null;
+  setStatus("正在保存配准版本...");
+  state.registration = await jsonFetch(`/api/v1/registrations/line-drafts/${state.draft.id}/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ registration_id: state.registration.registration_id }),
+  });
+  renderRegistration(state.registration);
+  setStatus("配准版本已保存。现在可以开始分染。");
+  return state.registration;
+}
+
 async function jsonFetch(url, options = {}) {
   const response = await fetch(url, options);
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || response.statusText);
+    let payload = null;
+    try {
+      payload = JSON.parse(text);
+    } catch (_) {
+      payload = null;
+    }
+    const error = new Error(text || response.statusText);
+    error.payload = payload;
+    throw error;
   }
   return response.json();
 }
@@ -137,6 +249,44 @@ $("lineDraftUploadForm").addEventListener("submit", async (event) => {
   }
 });
 
+$("openRegistrationButton").addEventListener("click", async () => {
+  if (!state.reference || !state.draft) return;
+  try {
+    await createRegistrationCandidate();
+  } catch (error) {
+    setStatus(`配准生成失败：${error.message}`);
+  }
+});
+
+$("autoRegistrationButton").addEventListener("click", async () => {
+  try {
+    await createRegistrationCandidate();
+  } catch (error) {
+    setStatus(`配准生成失败：${error.message}`);
+  }
+});
+
+$("approveRegistrationButton").addEventListener("click", async () => {
+  try {
+    await approveRegistrationCandidate();
+  } catch (error) {
+    setStatus(`保存配准失败：${error.message}`);
+  }
+});
+
+$("registrationOpacity").addEventListener("input", (event) => {
+  $("registrationBaimiao").style.opacity = String(Number(event.target.value) / 100);
+});
+
+$("registrationSvg").addEventListener("click", (event) => {
+  const point = screenToCanonicalPoint(event, $("registrationOriginal"));
+  state.registrationPoints.push({ x: Math.round(point.x), y: Math.round(point.y) });
+  updateRegistrationSvg();
+});
+
+$("registrationOriginal").addEventListener("load", updateRegistrationSvg);
+window.registrationGeometry = { computeRenderedRect, screenToCanonicalPoint };
+
 $("startFenranButton").addEventListener("click", async () => {
   if (!state.reference || !state.draft) return;
   $("startFenranButton").disabled = true;
@@ -149,14 +299,27 @@ $("startFenranButton").addEventListener("click", async () => {
         reference_upload_id: state.reference.id,
         line_draft_id: state.draft.id,
         teaching_goal: $("fenranGoal").value,
+        include_base_color: $("includeBaseColor").checked,
+        force_regenerate: $("forceFenranRegenerate").checked,
       }),
     });
-    setImage("fenranPreview", state.fenran.file_url);
-    $("downloadFenran").href = state.fenran.file_url;
-    $("downloadFenran").hidden = false;
-    setStatus("分染教学图已生成。它使用原画和白描作为输入，并保留白描线稿不变。");
+    renderFenranStages(state.fenran);
+    setStatus(state.fenran.cache_hit ? "已复用相同输入的分染阶段。" : "分染阶段已生成并通过完整性校验。");
   } catch (error) {
-    setStatus(`分染失败：${error.message}`);
+    const detail = error.payload && error.payload.detail;
+    if (detail && detail.status === "review_required") {
+      renderFenranStages({ stages: detail.completed_stages || [] });
+      setStatus(`分染需要审核：${detail.failed_stage}，${(detail.reasons || []).join("、")}`);
+    } else if (error.message.includes("registration_review")) {
+      setStatus("分染前需要先完成白描配准审核。");
+      try {
+        await createRegistrationCandidate();
+      } catch (registrationError) {
+        setStatus(`配准生成失败：${registrationError.message}`);
+      }
+    } else {
+      setStatus(`分染失败：${error.message}`);
+    }
   } finally {
     $("startFenranButton").disabled = false;
   }

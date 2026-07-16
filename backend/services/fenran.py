@@ -8,21 +8,36 @@ model's final teaching layout without re-overlaying the system line draft.
 
 from __future__ import annotations
 
-import base64
 import json
 import math
 import os
-from dataclasses import dataclass
+import shutil
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-import httpx
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
 
-RENDERER_VERSION = "fenran-renderer-v2"
+from .fenran_cache import build_fenran_cache_key, load_cached_manifest, save_cache_record
+from .fenran_canvas import (
+    _place_on_fenran_generation_canvas,
+    _resolve_fenran_generation_canvas,
+    _restore_from_fenran_generation_canvas,
+)
+from .fenran_generation import (
+    FenranConfigurationError,
+    FenranProviderError,
+    _post_fenran_image_edit,
+    render_fenran_image,
+)
+from .fenran_masks import build_subject_mask, composite_subject_only
+from .fenran_plan import PROMPT_VERSION, build_fenran_teaching_plan
+from .fenran_validation import FenranValidationThresholds, validate_fenran_stage
+
+RENDERER_VERSION = "fenran-renderer-v3"
 BAIMIAO_CONTRACT_VERSION = "baimiao-output-contract-v1"
-TECHNIQUE_TEMPLATE_VERSION = "fenran-llm-teaching-v1"
+TECHNIQUE_TEMPLATE_VERSION = "fenran-cumulative-teaching-v2"
 DEFAULT_IMAGE_MODEL = "gpt-image-2"
 DEFAULT_API_BASE = "https://api.openai.com/v1"
 
@@ -33,165 +48,289 @@ class FenranTrainingRenderResult:
     width: int
     height: int
     parameters: dict
+    status: str = "ready"
+    stages: list[dict] = field(default_factory=list)
+    cache_hit: bool = False
+    failed_stage: str | None = None
+    reasons: list[str] = field(default_factory=list)
 
 
 def generate_fenran_training_render(
     original_path: str,
-    line_draft_path: str,
-    output_dir: str,
-    sample_id: str,
+    registered_baimiao_path: str | None = None,
+    output_dir: str = "",
+    sample_id: str = "",
+    registration: dict | None = None,
     teaching_goal: str = "",
+    include_base_color: bool = False,
+    force_regenerate: bool = False,
+    max_attempts: int | None = None,
     render_image: Callable[..., dict | str | None] | None = None,
+    line_draft_path: str | None = None,
 ) -> FenranTrainingRenderResult:
-    os.makedirs(output_dir, exist_ok=True)
+    registered_baimiao_path = registered_baimiao_path or line_draft_path
+    if not registered_baimiao_path:
+        raise FenranConfigurationError("registered_baimiao_path is required")
+    if not output_dir or not sample_id:
+        raise FenranConfigurationError("output_dir and sample_id are required")
 
+    output_root = Path(output_dir)
+    output_root.mkdir(parents=True, exist_ok=True)
     original = ImageOps.exif_transpose(Image.open(original_path)).convert("RGB")
-    line_draft = ImageOps.exif_transpose(Image.open(line_draft_path)).convert("L")
-    canvas_size = line_draft.size
+    registered_baimiao = _normalize_line_draft(
+        ImageOps.exif_transpose(Image.open(registered_baimiao_path)).convert("L")
+    )
+    canonical_size = registered_baimiao.size
+    if original.size != canonical_size:
+        raise FenranConfigurationError(
+            f"Approved original and registered baimiao must share canonical size: {original.size} != {canonical_size}"
+        )
 
-    aligned_original = _align_original_to_canvas(original, canvas_size)
-    registered_original = aligned_original.copy()
-    registered_baimiao = _normalize_line_draft(line_draft)
-    color_mask = _build_color_mask(aligned_original)
-    palette = _extract_palette(aligned_original)
-    regions = _extract_regions(aligned_original, color_mask)
-    registration = _build_registration(original, line_draft, canvas_size)
+    registered_original = original.copy()
+    registration = dict(registration or {})
+    registration.setdefault("registration_id", "legacy-approved-input")
+    registration.setdefault("status", "approved")
+    registration.setdefault("requires_review", False)
+    teaching_plan = build_fenran_teaching_plan(include_base_color=include_base_color)
+    try:
+        config = _resolve_config()
+        if not config.fail_closed:
+            raise FenranConfigurationError("FENRAN_FAIL_CLOSED must remain true for incomplete-result safety")
+        if not config.preserve_canonical_coordinates:
+            raise FenranConfigurationError("FENRAN_PRESERVE_CANONICAL_COORDINATES must remain true")
+        canvas = _resolve_fenran_generation_canvas(
+            canonical_size,
+            image_size=config.image_size,
+            max_side=config.api_max_image_side,
+        )
+    except (TypeError, ValueError) as exc:
+        raise FenranConfigurationError(f"Invalid FENRAN configuration: {exc}") from exc
+    try:
+        thresholds = _resolve_validation_thresholds()
+    except (TypeError, ValueError) as exc:
+        raise FenranConfigurationError(f"Invalid FENRAN validation configuration: {exc}") from exc
+    attempts_limit = max(1, min(5, max_attempts or config.max_attempts))
+    cache_key = build_fenran_cache_key(
+        original_path=original_path,
+        registered_baimiao_path=registered_baimiao_path,
+        registration_id=str(registration.get("registration_id", "")),
+        include_base_color=include_base_color,
+        teaching_plan_version=teaching_plan.version,
+        prompt_version=PROMPT_VERSION,
+        model=config.model,
+        image_size=canvas.request_size,
+        teaching_goal=teaching_goal,
+        renderer_version=RENDERER_VERSION,
+        api_base=config.base_url,
+        validation_signature=json.dumps(asdict(thresholds), sort_keys=True),
+        runtime_signature=(
+            f"fallback={config.allow_single_reference_fallback}|"
+            f"fail_closed={config.fail_closed}|canonical={config.preserve_canonical_coordinates}"
+        ),
+    )
+    cache_root = output_root / ".cache"
+    if config.enable_cache and not force_regenerate:
+        cached_manifest_path = load_cached_manifest(cache_root, cache_key)
+        if cached_manifest_path:
+            return _result_from_manifest(cached_manifest_path, cache_hit=True)
+
+    artifact_dir = output_root / sample_id
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "registered_original": artifact_dir / "registered_original.png",
+        "registered_baimiao": artifact_dir / "registered_baimiao.png",
+        "generation_canvas": artifact_dir / "generation_canvas.json",
+        "subject_mask": artifact_dir / "subject_mask.png",
+        "teaching_plan": artifact_dir / "teaching_plan.json",
+        "color_evidence_json": artifact_dir / "color_evidence.json",
+        "prompt_bundle": artifact_dir / "prompt_bundle.json",
+        "technique_graph": artifact_dir / "technique_graph.json",
+        "render_manifest": artifact_dir / "render_manifest.json",
+    }
+    registered_original.save(paths["registered_original"])
+    registered_baimiao.save(paths["registered_baimiao"])
+
+    color_mask = _build_color_mask(registered_original)
+    palette = _extract_palette(registered_original)
+    regions = _extract_regions(registered_original, color_mask)
     evidence = _build_color_evidence(
         original=original,
-        aligned_original=aligned_original,
+        aligned_original=registered_original,
         line_draft=registered_baimiao,
         palette=palette,
         regions=regions,
         registration=registration,
         teaching_goal=teaching_goal,
     )
-    prompt_bundle = _build_prompt_bundle(evidence=evidence, teaching_goal=teaching_goal)
-    image_size = _resolve_image_size(canvas_size)
-    config = _resolve_config()
-
-    artifact_dir = Path(output_dir) / sample_id
-    artifact_dir.mkdir(parents=True, exist_ok=True)
-
-    paths = {
-        "registered_original": artifact_dir / "registered_original.png",
-        "registered_baimiao": artifact_dir / "registered_baimiao.png",
-        "registration_overlay": artifact_dir / "registration_overlay.png",
-        "registration_json": artifact_dir / "registration.json",
-        "color_evidence_json": artifact_dir / "color_evidence.json",
-        "prompt_bundle": artifact_dir / "prompt_bundle.json",
-        "api_registered_original": artifact_dir / "api_registered_original.jpg",
-        "api_registered_baimiao": artifact_dir / "api_registered_baimiao.png",
-        "api_reference_overlay": artifact_dir / "api_reference_overlay.jpg",
-        "raw_model_output": artifact_dir / "raw_model_output.png",
-        "final_teaching_preview": artifact_dir / "final_teaching_preview.png",
-        "technique_graph": artifact_dir / "technique_graph.json",
-        "render_manifest": artifact_dir / "render_manifest.json",
+    subject_mask = build_subject_mask(registered_baimiao, registered_original)
+    expected_line_mask = ImageOps.invert(registered_baimiao)
+    subject_mask.save(paths["subject_mask"])
+    prompt_bundle = {
+        "prompt_version": PROMPT_VERSION,
+        "teaching_goal": teaching_goal,
+        "stages": {stage.stage_id: stage.prompt for stage in teaching_plan.stages},
     }
-
-    registered_original.save(paths["registered_original"])
-    registered_baimiao.save(paths["registered_baimiao"])
-    _registration_overlay(registered_original, registered_baimiao).save(paths["registration_overlay"])
-    _prepare_fenran_api_inputs(
-        registered_original=registered_original,
-        registered_baimiao=registered_baimiao,
-        original_path=paths["api_registered_original"],
-        baimiao_path=paths["api_registered_baimiao"],
-        overlay_path=paths["api_reference_overlay"],
-    )
-    _write_json(paths["registration_json"], registration)
+    _write_json(paths["generation_canvas"], canvas.to_dict())
+    _write_json(paths["teaching_plan"], teaching_plan.to_dict())
     _write_json(paths["color_evidence_json"], evidence)
     _write_json(paths["prompt_bundle"], prompt_bundle)
 
-    request = {
-        "model": config.model,
-        "prompt": prompt_bundle["user_prompt"],
-        "size": image_size,
-        "image_paths": [str(paths["registered_original"]), str(paths["registered_baimiao"])],
-        "api_image_paths": [str(paths["api_registered_original"]), str(paths["api_registered_baimiao"])],
-        "fallback_image_path": str(paths["api_reference_overlay"]),
-        "evidence": evidence,
-        "output_path": str(paths["raw_model_output"]),
-    }
+    selected_stages: list[dict] = []
+    previous_path = paths["registered_baimiao"]
+    previous_image = registered_baimiao.convert("RGB")
+    provider_modes: list[dict] = []
 
-    if render_image is None:
-        _render_fenran_with_openai_compatible_api(
-            request=request,
-            api_key=config.api_key,
-            base_url=config.base_url,
-        )
-    else:
-        injected_request = {
-            key: request[key]
-            for key in ("model", "prompt", "size", "image_paths", "evidence", "output_path")
-        }
-        result = render_image(**injected_request)
-        if isinstance(result, str):
-            request["output_path"] = result
-        elif isinstance(result, dict) and result.get("raw_output_path"):
-            request["output_path"] = str(result["raw_output_path"])
+    for stage in teaching_plan.stages:
+        stage_dir = artifact_dir / stage.stage_id
+        stage_dir.mkdir(parents=True, exist_ok=True)
+        passed_attempts: list[tuple[float, Path, dict]] = []
+        best_failed: tuple[float, Path, dict] | None = None
+        for attempt_number in range(1, attempts_limit + 1):
+            prefix = f"attempt_{attempt_number:02d}"
+            raw_path = stage_dir / f"{prefix}_raw.png"
+            restored_path = stage_dir / f"{prefix}_restored.png"
+            composited_path = stage_dir / f"{prefix}_composited.png"
+            validation_path = stage_dir / f"{prefix}_validation.json"
+            canonical_inputs = [str(previous_path), str(paths["registered_original"])]
+            canonical_images = [previous_image, registered_original]
+            if stage.stage_id != "stage_00_base_color":
+                canonical_inputs.append(str(paths["registered_baimiao"]))
+                canonical_images.append(registered_baimiao)
+            provider_inputs = _write_provider_inputs(
+                stage_dir=stage_dir,
+                prefix=prefix,
+                canonical_inputs=canonical_images,
+                canvas=canvas,
+            )
+            prompt = f"{stage.prompt}\n用户教学目标：{teaching_goal or '分染教学'}\n颜色证据：{json.dumps(evidence, ensure_ascii=False)}"
+            if render_image is None:
+                request_meta = render_fenran_image(
+                    model=config.model,
+                    prompt=prompt,
+                    size=canvas.request_size,
+                    image_paths=provider_inputs,
+                    output_path=str(raw_path),
+                    api_key=config.api_key,
+                    base_url=config.base_url,
+                    timeout_seconds=config.timeout_seconds,
+                )
+            else:
+                injected = render_image(
+                    model=config.model,
+                    prompt=prompt,
+                    size=canvas.request_size,
+                    image_paths=canonical_inputs,
+                    evidence=evidence,
+                    output_path=str(raw_path),
+                )
+                request_meta = injected if isinstance(injected, dict) else {}
+                if isinstance(injected, str):
+                    raw_path = Path(injected)
+                elif isinstance(injected, dict) and injected.get("raw_output_path"):
+                    raw_path = Path(str(injected["raw_output_path"]))
+            provider_modes.append({
+                "stage_id": stage.stage_id,
+                "attempt": attempt_number,
+                "request_mode": request_meta.get("request_mode", "multi_image"),
+                "input_image_count": len(canonical_inputs),
+                "fallback_used": bool(request_meta.get("fallback_used", False)),
+            })
+            if not raw_path.exists():
+                raise FenranProviderError("Fenran render did not produce a model output file")
 
-    raw_model_output_path = Path(request["output_path"])
-    if not raw_model_output_path.exists():
-        raise RuntimeError("Fenran render did not produce a model output file")
+            model_output = ImageOps.exif_transpose(Image.open(raw_path)).convert("RGB")
+            if model_output.size == canvas.canvas_size:
+                restored = _restore_from_fenran_generation_canvas(model_output, canvas)
+            else:
+                raise FenranProviderError(
+                    f"Image provider returned {model_output.size}, expected canvas size {canvas.canvas_size}"
+                )
+            restored.save(restored_path)
+            composited = composite_subject_only(restored, previous_image, subject_mask, feather_radius=0)
+            composited.save(composited_path)
+            validation = validate_fenran_stage(
+                stage_id=stage.stage_id,
+                previous=previous_image,
+                current=composited,
+                expected_subject_mask=subject_mask,
+                expected_line_mask=expected_line_mask,
+                canonical_size=canonical_size,
+                thresholds=thresholds,
+            )
+            validation_payload = validation.to_dict()
+            validation_payload["attempt"] = attempt_number
+            _write_json(validation_path, validation_payload)
+            candidate = (validation.score, composited_path, validation_payload)
+            if validation.passed:
+                passed_attempts.append(candidate)
+            if best_failed is None or candidate[0] > best_failed[0]:
+                best_failed = candidate
+            if validation.passed:
+                break
 
-    model_output = ImageOps.exif_transpose(Image.open(raw_model_output_path)).convert("RGB")
-    model_output = _fit_to_canvas(model_output, canvas_size)
-    final = model_output
-    final.save(paths["final_teaching_preview"])
-    if raw_model_output_path != paths["raw_model_output"]:
-        raw_model_output_path.replace(paths["raw_model_output"])
+        if not passed_attempts:
+            best_attempt_url = str(best_failed[1]) if best_failed else ""
+            reasons = best_failed[2].get("reasons", []) if best_failed else ["no_attempt_output"]
+            manifest = _build_manifest(
+                sample_id=sample_id,
+                status="review_required",
+                output_path=best_attempt_url,
+                canonical_size=canonical_size,
+                stages=selected_stages,
+                failed_stage=stage.stage_id,
+                reasons=reasons,
+                cache_key=cache_key,
+                paths=paths,
+                palette=palette,
+                teaching_goal=teaching_goal,
+                config=config,
+                registration=registration,
+                provider_modes=provider_modes,
+            )
+            _write_json(paths["render_manifest"], manifest)
+            return _result_from_manifest(paths["render_manifest"], cache_hit=False)
+
+        _, selected_source, selected_validation = max(passed_attempts, key=lambda item: item[0])
+        selected_path = stage_dir / "selected.png"
+        shutil.copyfile(selected_source, selected_path)
+        previous_path = selected_path
+        previous_image = Image.open(selected_path).convert("RGB")
+        selected_stages.append({
+            "stage_id": stage.stage_id,
+            "title": stage.title,
+            "technique": stage.technique,
+            "pigments": list(stage.pigments),
+            "output_path": str(selected_path),
+            "status": "ready",
+            "validation": selected_validation,
+        })
 
     technique_graph = {
         "version": TECHNIQUE_TEMPLATE_VERSION,
-        "layers": [
-            {"id": "registration", "mode": "contain_resize", "status": "done"},
-            {"id": "color_evidence", "mode": "lab_palette_and_regions", "status": "done"},
-            {"id": "llm_teaching_render", "mode": "gpt-image-compatible", "model": config.model},
-            {"id": "line_relay", "mode": "line_draft_input_only", "status": "skipped_final_overlay"},
-        ],
-        "requires_review": bool(registration["requires_review"]),
+        "stages": [{"stage_id": stage["stage_id"], "status": stage["status"]} for stage in selected_stages],
+        "line_overlay_applied": False,
     }
     _write_json(paths["technique_graph"], technique_graph)
-
-    manifest = {
-        "sample_id": sample_id,
-        "created_at": _utc_now(),
-        "renderer_version": RENDERER_VERSION,
-        "baimiao_version": BAIMIAO_CONTRACT_VERSION,
-        "technique_template_version": TECHNIQUE_TEMPLATE_VERSION,
-        "model": config.model,
-        "api_base": config.base_url,
-        "line_draft_modified": False,
-        "line_overlay_applied": False,
-        "needs_review": bool(registration["requires_review"]),
-        "artifacts": {key: str(path) for key, path in paths.items()},
-        "palette": palette,
-        "teaching_goal": teaching_goal,
-    }
-    _write_json(paths["render_manifest"], manifest)
-
-    return FenranTrainingRenderResult(
-        output_path=str(paths["final_teaching_preview"]),
-        width=final.width,
-        height=final.height,
-        parameters={
-            "source": "original_plus_line_draft",
-            "original_size": [original.width, original.height],
-            "line_draft_size": [line_draft.width, line_draft.height],
-            "aligned_size": [aligned_original.width, aligned_original.height],
-            "line_draft_modified": False,
-            "line_overlay_applied": False,
-            "palette": palette,
-            "evidence": evidence,
-            "model": config.model,
-            "api_base": config.base_url,
-            "image_size": image_size,
-            "renderer_version": RENDERER_VERSION,
-            "baimiao_version": BAIMIAO_CONTRACT_VERSION,
-            "technique_template_version": TECHNIQUE_TEMPLATE_VERSION,
-            "artifacts": {key: str(path) for key, path in paths.items()},
-        },
+    manifest = _build_manifest(
+        sample_id=sample_id,
+        status="ready",
+        output_path=str(previous_path),
+        canonical_size=canonical_size,
+        stages=selected_stages,
+        failed_stage=None,
+        reasons=[],
+        cache_key=cache_key,
+        paths=paths,
+        palette=palette,
+        teaching_goal=teaching_goal,
+        config=config,
+        registration=registration,
+        provider_modes=provider_modes,
     )
+    _write_json(paths["render_manifest"], manifest)
+    if config.enable_cache:
+        save_cache_record(cache_root, cache_key, paths["render_manifest"])
+    return _result_from_manifest(paths["render_manifest"], cache_hit=False)
 
 
 @dataclass
@@ -199,6 +338,14 @@ class _FenranConfig:
     api_key: str | None
     base_url: str
     model: str
+    image_size: str
+    timeout_seconds: float
+    max_attempts: int
+    api_max_image_side: int
+    enable_cache: bool
+    fail_closed: bool
+    allow_single_reference_fallback: bool
+    preserve_canonical_coordinates: bool
 
 
 def _resolve_config() -> _FenranConfig:
@@ -212,121 +359,132 @@ def _resolve_config() -> _FenranConfig:
     if not base_url.endswith("/v1"):
         base_url = f"{base_url}/v1"
     model = os.getenv("FENRAN_IMAGE_MODEL", DEFAULT_IMAGE_MODEL).strip() or DEFAULT_IMAGE_MODEL
-    return _FenranConfig(api_key=api_key, base_url=base_url, model=model)
+    return _FenranConfig(
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+        image_size=os.getenv("FENRAN_IMAGE_SIZE", "auto").strip() or "auto",
+        timeout_seconds=float(os.getenv("FENRAN_IMAGE_TIMEOUT_SECONDS", "240")),
+        max_attempts=max(1, min(5, int(os.getenv("FENRAN_MAX_ATTEMPTS", "3")))),
+        api_max_image_side=max(1024, int(os.getenv("FENRAN_API_MAX_IMAGE_SIDE", "1536"))),
+        enable_cache=_env_bool("FENRAN_ENABLE_CACHE", True),
+        fail_closed=_env_bool("FENRAN_FAIL_CLOSED", True),
+        allow_single_reference_fallback=_env_bool("FENRAN_ALLOW_SINGLE_REFERENCE_FALLBACK", False),
+        preserve_canonical_coordinates=_env_bool("FENRAN_PRESERVE_CANONICAL_COORDINATES", True),
+    )
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_validation_thresholds() -> FenranValidationThresholds:
+    return FenranValidationThresholds(
+        min_subject_bbox_iou=float(os.getenv("FENRAN_MIN_SUBJECT_BBOX_IOU", "0.90")),
+        max_subject_center_shift_ratio=float(os.getenv("FENRAN_MAX_SUBJECT_CENTER_SHIFT_RATIO", "0.02")),
+        max_subject_size_change_ratio=float(os.getenv("FENRAN_MAX_SUBJECT_SIZE_CHANGE_RATIO", "0.04")),
+        min_subject_coverage=float(os.getenv("FENRAN_MIN_SUBJECT_COVERAGE", "0.92")),
+        max_outside_subject_change_ratio=float(os.getenv("FENRAN_MAX_OUTSIDE_SUBJECT_CHANGE_RATIO", "0.01")),
+        min_validation_score=float(os.getenv("FENRAN_MIN_VALIDATION_SCORE", "0.80")),
+        min_line_retention_ratio=float(os.getenv("FENRAN_MIN_LINE_RETENTION_RATIO", "0.35")),
+    )
+
+
+def _write_provider_inputs(*, stage_dir: Path, prefix: str, canonical_inputs: list[Image.Image], canvas) -> list[str]:
+    paths = []
+    for index, image in enumerate(canonical_inputs):
+        destination = stage_dir / f"{prefix}_input_{index + 1}.png"
+        resampling = Image.Resampling.NEAREST if image.mode == "L" else Image.Resampling.LANCZOS
+        _place_on_fenran_generation_canvas(image, canvas, resample=resampling).save(destination)
+        paths.append(str(destination))
+    return paths
+
+
+def _build_manifest(
+    *,
+    sample_id: str,
+    status: str,
+    output_path: str,
+    canonical_size: tuple[int, int],
+    stages: list[dict],
+    failed_stage: str | None,
+    reasons: list[str],
+    cache_key: str,
+    paths: dict,
+    palette: list[str],
+    teaching_goal: str,
+    config: _FenranConfig,
+    registration: dict,
+    provider_modes: list[dict],
+) -> dict:
+    return {
+        "sample_id": sample_id,
+        "created_at": _utc_now(),
+        "status": status,
+        "output_path": output_path,
+        "canonical_width": canonical_size[0],
+        "canonical_height": canonical_size[1],
+        "stages": stages,
+        "failed_stage": failed_stage,
+        "reasons": reasons,
+        "cache_key": cache_key,
+        "renderer_version": RENDERER_VERSION,
+        "baimiao_version": BAIMIAO_CONTRACT_VERSION,
+        "technique_template_version": TECHNIQUE_TEMPLATE_VERSION,
+        "prompt_version": PROMPT_VERSION,
+        "model": config.model,
+        "api_base": config.base_url,
+        "line_draft_modified": False,
+        "registered_baimiao_modified": False,
+        "line_overlay_applied": False,
+        "fallback_used": any(item["fallback_used"] for item in provider_modes),
+        "fail_closed": config.fail_closed,
+        "preserve_canonical_coordinates": config.preserve_canonical_coordinates,
+        "requests": provider_modes,
+        "registration": registration,
+        "artifacts": {key: str(path) for key, path in paths.items()},
+        "palette": palette,
+        "teaching_goal": teaching_goal,
+    }
+
+
+def _result_from_manifest(manifest_path: Path, *, cache_hit: bool) -> FenranTrainingRenderResult:
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    output_path = manifest.get("output_path", "")
+    parameters = {key: value for key, value in manifest.items() if key not in {"stages", "output_path"}}
+    parameters["artifacts"] = manifest.get("artifacts", {}) | {"render_manifest": str(manifest_path)}
+    return FenranTrainingRenderResult(
+        output_path=output_path,
+        width=int(manifest["canonical_width"]),
+        height=int(manifest["canonical_height"]),
+        parameters=parameters,
+        status=manifest.get("status", "review_required"),
+        stages=manifest.get("stages", []),
+        cache_hit=cache_hit,
+        failed_stage=manifest.get("failed_stage"),
+        reasons=manifest.get("reasons", []),
+    )
 
 
 def _render_fenran_with_openai_compatible_api(*, request: dict, api_key: str | None, base_url: str) -> dict:
-    if not api_key:
-        raise RuntimeError("Missing FENRAN_API_KEY or OPENAI_API_KEY")
-
-    url = f"{base_url}/images/edits"
-    headers = {"Authorization": f"Bearer {api_key}"}
-    data = {
-        "model": request["model"],
-        "prompt": request["prompt"],
-        "size": request["size"],
-    }
-    image_paths = request.get("api_image_paths") or request["image_paths"]
-
-    with httpx.Client(timeout=_image_timeout_seconds()) as client:
-        response = _post_fenran_multi_image_edit(client, url, headers, data, image_paths)
-        if response.status_code >= 400 and _should_try_single_reference_fallback(response):
-            fallback_path = request.get("fallback_image_path")
-            if fallback_path:
-                fallback_response = _post_fenran_single_reference_edit(client, url, headers, data, fallback_path)
-                if fallback_response.status_code < 400:
-                    response = fallback_response
-        if response.status_code >= 400:
-            raise RuntimeError(_format_image_api_error(response))
-        payload = response.json()
-
-        image_data = payload.get("data", [{}])[0]
-        raw_output_path = Path(request["output_path"])
-        if image_data.get("b64_json"):
-            raw_output_path.write_bytes(base64.b64decode(image_data["b64_json"]))
-        elif image_data.get("url"):
-            image_response = client.get(image_data["url"])
-            image_response.raise_for_status()
-            raw_output_path.write_bytes(image_response.content)
-        else:
-            raise RuntimeError("Image API did not return b64_json or url")
-
-    return {"raw_output_path": str(request["output_path"]), "provider": "gpt-image-compatible"}
+    return render_fenran_image(
+        model=request["model"],
+        prompt=request["prompt"],
+        size=request["size"],
+        image_paths=request.get("api_image_paths") or request["image_paths"],
+        output_path=request["output_path"],
+        api_key=api_key,
+        base_url=base_url,
+        timeout_seconds=_image_timeout_seconds(),
+        fallback_image_path=request.get("fallback_image_path"),
+    )
 
 
 def _post_fenran_multi_image_edit(client: httpx.Client, url: str, headers: dict, data: dict, image_paths: list[str]) -> httpx.Response:
-    with open(image_paths[0], "rb") as first, open(image_paths[1], "rb") as second:
-        files = [
-            ("image", (Path(image_paths[0]).name, first, _guess_mime(image_paths[0]))),
-            ("image", (Path(image_paths[1]).name, second, _guess_mime(image_paths[1]))),
-        ]
-        return client.post(url, headers=headers, data=data, files=files)
-
-
-def _post_fenran_single_reference_edit(client: httpx.Client, url: str, headers: dict, data: dict, fallback_path: str) -> httpx.Response:
-    with open(fallback_path, "rb") as reference_file:
-        files = {"image": (Path(fallback_path).name, reference_file, _guess_mime(fallback_path))}
-        return client.post(url, headers=headers, data=data, files=files)
-
-
-def _should_try_single_reference_fallback(response: httpx.Response) -> bool:
-    return response.status_code in {400, 413, 415, 422, 524}
-
-
-def _align_original_to_canvas(original: Image.Image, canvas_size: tuple[int, int]) -> Image.Image:
-    if original.size == canvas_size:
-        return original.copy()
-    contained = ImageOps.contain(original, canvas_size, Image.Resampling.LANCZOS)
-    canvas = Image.new("RGB", canvas_size, "white")
-    offset = ((canvas_size[0] - contained.width) // 2, (canvas_size[1] - contained.height) // 2)
-    canvas.paste(contained, offset)
-    return canvas
-
-
-def _fit_to_canvas(img: Image.Image, canvas_size: tuple[int, int]) -> Image.Image:
-    if img.size == canvas_size:
-        return img.copy()
-    contained = ImageOps.contain(img, canvas_size, Image.Resampling.LANCZOS)
-    canvas = Image.new("RGB", canvas_size, "white")
-    offset = ((canvas_size[0] - contained.width) // 2, (canvas_size[1] - contained.height) // 2)
-    canvas.paste(contained, offset)
-    return canvas
-
-
-def _prepare_fenran_api_inputs(
-    *,
-    registered_original: Image.Image,
-    registered_baimiao: Image.Image,
-    original_path: Path,
-    baimiao_path: Path,
-    overlay_path: Path,
-) -> None:
-    max_side = max(256, int(os.getenv("FENRAN_API_MAX_IMAGE_SIDE", "1024")))
-    target_size = _contain_size(registered_original.size, (max_side, max_side))
-    original_api = registered_original.convert("RGB").resize(target_size, Image.Resampling.LANCZOS)
-    baimiao_api = registered_baimiao.convert("L").resize(target_size, Image.Resampling.LANCZOS)
-    baimiao_api = baimiao_api.point(lambda value: 0 if value < 200 else 255)
-    overlay = _registration_overlay(original_api, baimiao_api)
-
-    original_api.save(original_path, quality=90, optimize=True)
-    baimiao_api.save(baimiao_path)
-    overlay.save(overlay_path, quality=90, optimize=True)
-
-
-def _contain_size(source_size: tuple[int, int], target_size: tuple[int, int]) -> tuple[int, int]:
-    source_width, source_height = source_size
-    target_width, target_height = target_size
-    scale = min(target_width / max(1, source_width), target_height / max(1, source_height), 1.0)
-    return max(1, round(source_width * scale)), max(1, round(source_height * scale))
-
-
-def _guess_mime(path: str | Path) -> str:
-    ext = str(path).rsplit(".", 1)[-1].lower()
-    if ext in {"jpg", "jpeg"}:
-        return "image/jpeg"
-    if ext == "webp":
-        return "image/webp"
-    return "image/png"
+    return _post_fenran_image_edit(client, url, headers, data, image_paths)
 
 
 def _build_color_mask(original: Image.Image) -> Image.Image:
@@ -339,50 +497,6 @@ def _build_color_mask(original: Image.Image) -> Image.Image:
 def _normalize_line_draft(line_draft: Image.Image) -> Image.Image:
     clean = line_draft.convert("L")
     return clean.point(lambda value: 0 if value < 200 else 255)
-
-
-def _registration_overlay(original: Image.Image, line_draft: Image.Image) -> Image.Image:
-    base = original.convert("RGBA")
-    lines = Image.new("RGBA", line_draft.size, (0, 0, 0, 0))
-    alpha = ImageOps.invert(line_draft).point(lambda value: min(255, max(0, value)))
-    lines.putalpha(alpha)
-    base.alpha_composite(lines)
-    return base.convert("RGB")
-
-
-def _overlay_line_draft(wash: Image.Image, line_draft: Image.Image) -> Image.Image:
-    base = wash.convert("RGBA")
-    line_overlay = Image.new("RGBA", line_draft.size, (0, 0, 0, 0))
-    alpha = ImageOps.invert(line_draft).point(lambda value: min(255, max(0, value)))
-    line_overlay.putalpha(alpha)
-    base.alpha_composite(line_overlay)
-    return base.convert("RGB")
-
-
-def _build_registration(
-    original: Image.Image,
-    line_draft: Image.Image,
-    canvas_size: tuple[int, int],
-) -> dict:
-    size_match = original.size == line_draft.size
-    ratio_original = original.width / max(1, original.height)
-    ratio_line = line_draft.width / max(1, line_draft.height)
-    ratio_delta = abs(ratio_original - ratio_line) / max(0.001, ratio_line)
-    requires_review = (not size_match) or ratio_delta > 0.05
-    return {
-        "registration_id": f"fenran-{original.width}x{original.height}-{canvas_size[0]}x{canvas_size[1]}",
-        "global_transform": {
-            "type": "contain_resize_to_line_draft_canvas",
-            "original_size": [original.width, original.height],
-            "canvas_size": [canvas_size[0], canvas_size[1]],
-        },
-        "local_transform_uri": None,
-        "registration_score": 1.0 if not requires_review else round(max(0.55, 1.0 - ratio_delta), 4),
-        "mean_boundary_error_px": 0.0 if size_match else None,
-        "max_boundary_error_px": 0.0 if size_match else None,
-        "requires_review": requires_review,
-        "version": "fenran-registration-v1",
-    }
 
 
 def _build_color_evidence(
@@ -420,37 +534,10 @@ def _build_color_evidence(
         "regions": regions,
         "registration": registration,
         "review": {
-            "needs_review": bool(registration["requires_review"]),
+                "needs_review": bool(registration.get("requires_review", False)),
             "notes": ["preserve_line_draft", "no_crop", "no_resize_asymmetric"],
         },
         "contract_version": BAIMIAO_CONTRACT_VERSION,
-    }
-
-
-def _build_prompt_bundle(*, evidence: dict, teaching_goal: str) -> dict:
-    system_prompt = (
-        "你是一位工笔花鸟分染教学老师。"
-        "你的任务不是重画白描，也不是改变构图，而是根据原画和白描，"
-        "生成一张适合教学的分染示范图。"
-    )
-    user_prompt = f"""
-请按照以下要求生成工笔花鸟分染教学图：
-1. 只做分染教学，不改白描结构，不改构图，不裁切，不拉伸。
-2. 保留纸白、线稿和主体轮廓，颜色必须来自原画可见色。
-3. 按浅染 -> 加深 -> 局部提染的顺序组织画面。
-4. 避免背景脏色、漂移、越界上色和随机噪点。
-5. 让教学意图清楚：先看颜色，再看层次，再看线稿关系。
-6. 用户教学目标：{teaching_goal or '分染教学'}
-
-颜色证据：
-{json.dumps(evidence, ensure_ascii=False, indent=2)}
-""".strip()
-    return {
-        "system_prompt": system_prompt,
-        "user_prompt": user_prompt,
-        "teaching_goal": teaching_goal,
-        "evidence_contract": BAIMIAO_CONTRACT_VERSION,
-        "prompt_version": TECHNIQUE_TEMPLATE_VERSION,
     }
 
 

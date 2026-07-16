@@ -1,42 +1,46 @@
-﻿# Fenran Data Contracts
+# Fenran Data Contracts
 
-## Fenran Training Render Request
+## Request
 
 ```json
 {
   "reference_upload_id": "string",
   "line_draft_id": "string",
   "sample_id": "string",
-  "teaching_goal": "string"
+  "teaching_goal": "string",
+  "include_base_color": false,
+  "force_regenerate": false,
+  "max_attempts": 3
 }
 ```
 
-## Fenran Training Render Response
+`line_draft_id` must have an approved registration record containing `registered_baimiao_path`. The original and registered baimiao must have the same canonical pixel size.
+
+## Response
 
 ```json
 {
   "sample_id": "string",
   "reference_upload_id": "string",
   "line_draft_id": "string",
-  "file_url": "/uploads/fenran_training/{sample_id}.png",
-  "metadata": {
-    "line_draft_modified": false,
-    "model": "gpt-image-2",
-    "renderer_version": "fenran-renderer-v2"
-  }
+  "canonical_width": 1204,
+  "canonical_height": 1394,
+  "stages": [
+    {
+      "stage_id": "stage_01_first_fenran",
+      "title": "第一遍分染",
+      "technique": "分染",
+      "pigments": ["花青", "淡墨"],
+      "file_url": "/uploads/fenran_training/sample/stage_01_first_fenran/selected.png",
+      "status": "ready",
+      "validation": {}
+    }
+  ],
+  "file_url": "/uploads/fenran_training/sample/stage_03_sap_green_glaze/selected.png",
+  "status": "ready",
+  "cache_hit": false,
+  "metadata": {}
 }
 ```
 
-## Line Draft Upload
-
-A user-uploaded white draft is stored with the same line-draft table and a `provider` value of `user_upload`. It keeps the reference linkage intact so fenran and practice sessions can reuse it.
-
-## Read-Only Baimiao Contract
-
-Fenran reads:
-
-- the original reference file path
-- the line-draft file path
-- the stored database record metadata
-
-Fenran does not mutate line-draft records or files.
+The source line draft and approved registered baimiao are read-only artifacts. Fenran copies them into its own artifact directory and does not write back to the source files.

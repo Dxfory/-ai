@@ -1,7 +1,7 @@
-﻿# Fenran Next Phases
+# Fenran Next Phases
 
-1. Add formal baimiao output contract export so fenran never reads ad hoc fields.
-2. Add feature-based registration and fail-closed review gating for poor alignment.
-3. Add manual mask import/edit API and a minimal review page.
-4. Add object-level Lab color analysis with paper and ink exclusion.
-5. Add measured pigment sample storage and nearest-neighbor lookup without invented recipes.
+1. Add object-aware mask review for petals, leaves, branches, fruit, and insects.
+2. Add landmark-level registration metrics to the approved registration artifact.
+3. Calibrate validation thresholds on a held-out set of complete teaching stages.
+4. Add teacher controls for reviewing and selecting failed attempts without changing the generation plan.
+5. Add measured pigment-card references without inventing pigment ratios.

@@ -53,6 +53,15 @@
           <div id="fenranControls" class="control-group" hidden>
             <label class="label" for="fenranGoal">分染教学目标</label>
             <input id="fenranGoal" type="text" value="先浅后深，保留纸白，按花瓣和叶片结构分染" />
+            <label class="checkbox">
+              <input id="includeBaseColor" type="checkbox" />
+              制作底色
+            </label>
+            <label class="checkbox">
+              <input id="forceFenranRegenerate" type="checkbox" />
+              强制重新生成
+            </label>
+            <button id="openRegistrationButton" type="button" class="secondary-button">配准编辑</button>
             <button id="startFenranButton" type="button">开始分染</button>
           </div>
 
@@ -71,12 +80,24 @@
               <img id="draftPreview" alt="" />
               <a id="downloadDraft" class="download" href="#" download hidden>下载白描</a>
             </figure>
-            <figure>
-              <figcaption>分染教学图</figcaption>
-              <img id="fenranPreview" alt="" />
-              <a id="downloadFenran" class="download" href="#" download hidden>下载分染图</a>
-            </figure>
           </div>
+
+          <section id="fenranStages" class="fenran-stages" hidden></section>
+
+          <section id="registrationArea" class="registration-area" hidden>
+            <div class="registration-toolbar">
+              <label class="label" for="registrationOpacity">白描透明度</label>
+              <input id="registrationOpacity" type="range" min="0" max="100" value="70" />
+              <button id="autoRegistrationButton" type="button" class="secondary-button">重新配准</button>
+              <button id="approveRegistrationButton" type="button">保存配准版本</button>
+            </div>
+            <div id="registrationViewer" class="registration-viewer">
+              <img id="registrationOriginal" alt="" />
+              <img id="registrationBaimiao" class="registration-line-layer" alt="" />
+              <svg id="registrationSvg" class="registration-svg"></svg>
+            </div>
+            <p id="registrationMeta" class="status"></p>
+          </section>
 
           <section id="practiceArea" class="practice" hidden>
             <div class="step-header">

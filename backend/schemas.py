@@ -71,13 +71,31 @@ class FenranTrainingRenderRequest(BaseModel):
     line_draft_id: str
     sample_id: str = ""
     teaching_goal: str = ""
+    include_base_color: bool = False
+    force_regenerate: bool = False
+    max_attempts: int = Field(default=3, ge=1, le=5)
+
+
+class FenranStageRenderSchema(BaseModel):
+    stage_id: str
+    title: str
+    technique: str
+    pigments: List[str] = Field(default_factory=list)
+    file_url: str
+    status: str
+    validation: dict = Field(default_factory=dict)
 
 
 class FenranTrainingRenderSchema(BaseModel):
     sample_id: str
     reference_upload_id: str
     line_draft_id: str
+    canonical_width: int = 0
+    canonical_height: int = 0
+    stages: List[FenranStageRenderSchema] = Field(default_factory=list)
     file_url: str
+    status: str = "ready"
+    cache_hit: bool = False
     metadata: dict = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=datetime.now)
 

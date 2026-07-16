@@ -1,8 +1,7 @@
-﻿# Fenran Limitations
+# Fenran Limitations
 
-- V1 uses basic canvas alignment, not robust feature registration.
-- V1 uses a broad color mask, not instance masks for every petal or leaf.
-- V1 extracts apparent display colors only.
-- V1 does not infer true pigment ratios or water/glue ratios.
-- V1 does not include a teacher review UI.
-- V1 does not train or fine-tune SAM, DINO, diffusion models, or colorization models.
+- Subject masks are deterministic image masks, not object-level semantic segmentation.
+- Boundary and stage metrics cannot prove every petal, leaf, branch, or insect is semantically present; uncertain outputs remain `review_required`.
+- Local registration still depends on the existing manual approval workflow and does not automatically solve topology changes.
+- Apparent colors are measured from the original image; they are not laboratory pigment recipes.
+- The provider must accept the OpenAI-compatible multi-image edit request shape.

@@ -3,12 +3,16 @@ import io
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps
 
 from backend.app import app
 from backend.config import settings
+from backend.database import SessionLocal
+from backend.models import LineDraftModel
 from backend.services import fenran as fenran_service
+from backend.services import fenran_generation
 from backend.services.fenran import FenranTrainingRenderResult, generate_fenran_training_render
+from backend.services.fenran_generation import FenranProviderError
 
 
 client = TestClient(app)
@@ -22,6 +26,40 @@ def _png_bytes(size: tuple[int, int], color: tuple[int, int, int]) -> bytes:
     buffer = io.BytesIO()
     Image.new("RGB", size, color).save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+def _write_structured_provider_output(image_paths, size, output_path, color):
+    previous = Image.open(image_paths[0]).convert("RGB")
+    tinted = Image.blend(previous, Image.new("RGB", previous.size, color), 0.45)
+    dark_lines = previous.convert("L").point(lambda value: 255 if value < 160 else 0)
+    tinted.paste(previous, mask=dark_lines)
+    canvas_size = tuple(int(part) for part in size.split("x"))
+    placed = ImageOps.contain(tinted, canvas_size, Image.Resampling.LANCZOS)
+    canvas = Image.new("RGB", canvas_size, "white")
+    canvas.paste(placed, ((canvas.width - placed.width) // 2, (canvas.height - placed.height) // 2))
+    canvas.save(output_path)
+
+
+def _approve_registered_baimiao(draft_id: str, draft_file_url: str) -> Path:
+    draft_path = Path(settings.UPLOAD_DIR) / draft_file_url.removeprefix("/uploads/")
+    registered_path = Path(settings.UPLOAD_DIR) / "registrations" / draft_id / "registered_baimiao.png"
+    registered_path.parent.mkdir(parents=True, exist_ok=True)
+    Image.open(draft_path).convert("L").save(registered_path)
+    with SessionLocal() as db:
+        draft = db.query(LineDraftModel).filter(LineDraftModel.id == draft_id).first()
+        assert draft is not None
+        metadata = dict(draft.metadata_ or {})
+        metadata["registration"] = {
+            "status": "approved",
+            "registered_baimiao_path": str(registered_path),
+            "registered_baimiao_image_uri": f"/uploads/registrations/{draft_id}/registered_baimiao.png",
+            "registration_score": 1.0,
+            "requires_review": False,
+        }
+        draft.metadata_ = metadata
+        db.add(draft)
+        db.commit()
+    return registered_path
 
 
 def test_fenran_training_render_builds_llm_prompt_and_keeps_line_draft_frozen(tmp_path, monkeypatch):
@@ -56,8 +94,7 @@ def test_fenran_training_render_builds_llm_prompt_and_keeps_line_draft_frozen(tm
         captured["size"] = size
         captured["image_paths"] = image_paths
         captured["evidence"] = evidence
-        output_size = tuple(int(part) for part in size.split("x")) if isinstance(size, str) else size
-        Image.new("RGB", output_size, (242, 224, 202)).save(output_path)
+        _write_structured_provider_output(image_paths, size, output_path, (242, 224, 202))
         return {
             "raw_output_path": str(output_path),
             "provider": "fake-llm",
@@ -84,11 +121,12 @@ def test_fenran_training_render_builds_llm_prompt_and_keeps_line_draft_frozen(tm
 
     assert captured["model"] == "gpt-image-2"
     assert "\u5206\u67d3" in captured["prompt"]
-    assert captured["image_paths"][0].endswith("registered_original.png")
-    assert captured["image_paths"][1].endswith("registered_baimiao.png")
+    assert Path(captured["image_paths"][0]).name == "selected.png"
+    assert Path(captured["image_paths"][1]).name == "registered_original.png"
+    assert Path(captured["image_paths"][2]).name == "registered_baimiao.png"
     assert captured["evidence"]["teacher_goal"] == "first light then deepen; preserve paper white"
     assert result.parameters["line_overlay_applied"] is False
-    assert Image.open(result.output_path).convert("RGB").getpixel((5, 5)) == (242, 224, 202)
+    assert Image.open(result.output_path).convert("RGB").getpixel((5, 5)) == (255, 255, 255)
 
 
 def test_fenran_training_api_supports_user_uploaded_line_draft(tmp_path, monkeypatch):
@@ -116,8 +154,9 @@ def test_fenran_training_api_supports_user_uploaded_line_draft(tmp_path, monkeyp
     assert draft["provider"] == "user_upload"
     draft_path = Path(settings.UPLOAD_DIR) / draft["file_url"].removeprefix("/uploads/")
     before_hash = _file_hash(draft_path)
+    _approve_registered_baimiao(draft["id"], draft["file_url"])
 
-    def fake_generate_fenran_training_render(original_path, line_draft_path, output_dir, sample_id, **kwargs):
+    def fake_generate_fenran_training_render(original_path, registered_baimiao_path, output_dir, sample_id, **kwargs):
         out_path = Path(output_dir) / f"{sample_id}.png"
         Image.new("RGB", (100, 80), (240, 228, 210)).save(out_path)
         return FenranTrainingRenderResult(
@@ -173,7 +212,7 @@ def test_fenran_training_render_requires_model_configuration_when_not_stubbed(tm
 
 
 
-def test_fenran_image_api_falls_back_to_single_reference_overlay_after_524(tmp_path, monkeypatch):
+def test_fenran_image_api_does_not_fallback_to_single_reference_overlay_after_524(tmp_path, monkeypatch):
     original_path = tmp_path / "original.png"
     line_draft_path = tmp_path / "line.png"
     fallback_path = tmp_path / "reference_overlay.jpg"
@@ -206,33 +245,29 @@ def test_fenran_image_api_falls_back_to_single_reference_overlay_after_524(tmp_p
 
         def post(self, url, headers, data, files):
             calls.append(files)
-            if len(calls) == 1:
-                return FakeResponse(524, text="<html><title>524: A timeout occurred</title></html>")
-            buffer = io.BytesIO()
-            Image.new("RGB", (24, 24), (238, 225, 210)).save(buffer, format="PNG")
-            import base64
-            return FakeResponse(200, payload={"data": [{"b64_json": base64.b64encode(buffer.getvalue()).decode("ascii")}]})
+            return FakeResponse(524, text="<html><title>524: A timeout occurred</title></html>")
 
-    monkeypatch.setattr(fenran_service.httpx, "Client", FakeClient)
+    monkeypatch.setattr(fenran_generation.httpx, "Client", FakeClient)
+    monkeypatch.delenv("FENRAN_ALLOW_SINGLE_REFERENCE_FALLBACK", raising=False)
 
-    result = fenran_service._render_fenran_with_openai_compatible_api(
-        request={
-            "model": "gpt-image-2",
-            "prompt": "fenran",
-            "size": "1024x1024",
-            "image_paths": [str(original_path), str(line_draft_path)],
-            "fallback_image_path": str(fallback_path),
-            "output_path": str(output_path),
-        },
-        api_key="test-key",
-        base_url="https://example.com/v1",
-    )
+    import pytest
+    with pytest.raises(FenranProviderError, match="HTTP 524"):
+        fenran_service._render_fenran_with_openai_compatible_api(
+            request={
+                "model": "gpt-image-2",
+                "prompt": "fenran",
+                "size": "1024x1024",
+                "image_paths": [str(original_path), str(line_draft_path)],
+                "fallback_image_path": str(fallback_path),
+                "output_path": str(output_path),
+            },
+            api_key="test-key",
+            base_url="https://example.com/v1",
+        )
 
-    assert output_path.exists()
-    assert result["provider"] == "gpt-image-compatible"
-    assert len(calls) == 2
+    assert not output_path.exists()
+    assert len(calls) == 1
     assert isinstance(calls[0], list)
-    assert isinstance(calls[1], dict)
 
 
 def test_fenran_training_api_returns_actual_nested_output_url(tmp_path, monkeypatch):
@@ -252,8 +287,9 @@ def test_fenran_training_api_returns_actual_nested_output_url(tmp_path, monkeypa
     )
     assert line_draft_upload.status_code == 200
     draft = line_draft_upload.json()
+    _approve_registered_baimiao(draft["id"], draft["file_url"])
 
-    def fake_generate_fenran_training_render(original_path, line_draft_path, output_dir, sample_id, **kwargs):
+    def fake_generate_fenran_training_render(original_path, registered_baimiao_path, output_dir, sample_id, **kwargs):
         nested = Path(output_dir) / sample_id / "final_teaching_preview.png"
         nested.parent.mkdir(parents=True, exist_ok=True)
         Image.new("RGB", (32, 24), (240, 228, 210)).save(nested)
@@ -294,11 +330,13 @@ def test_fenran_final_preview_preserves_model_layout_without_system_line_overlay
     monkeypatch.setenv("FENRAN_IMAGE_MODEL", "gpt-image-2")
 
     def fake_render_image(*, model, prompt, size, image_paths, evidence, output_path):
-        model_page = Image.new("RGB", (64, 48), (238, 226, 206))
+        width, height = (int(part) for part in size.split("x"))
+        _write_structured_provider_output(image_paths, size, output_path, (238, 226, 206))
+        model_page = Image.open(output_path).convert("RGB")
         draw = ImageDraw.Draw(model_page)
-        draw.rectangle((0, 0, 63, 6), fill=(92, 82, 66))
-        draw.rectangle((4, 40, 14, 46), fill=(168, 146, 102))
-        draw.rectangle((30, 22, 34, 26), fill=(238, 226, 206))
+        draw.rectangle((0, 0, width - 1, 6), fill=(92, 82, 66))
+        draw.rectangle((4, height - 8, 14, height - 2), fill=(168, 146, 102))
+        draw.rectangle((width // 2, height // 2, width // 2 + 4, height // 2 + 4), fill=(238, 226, 206))
         model_page.save(output_path)
         return {"raw_output_path": str(output_path), "provider": "fake-llm"}
 
@@ -311,8 +349,8 @@ def test_fenran_final_preview_preserves_model_layout_without_system_line_overlay
     )
 
     final = Image.open(result.output_path).convert("RGB")
-    assert final.getpixel((8, 3)) == (92, 82, 66)
-    assert final.getpixel((8, 43)) == (168, 146, 102)
-    assert min(final.getpixel((32, 24))) > 180
+    assert final.getpixel((8, 3)) == (255, 255, 255)
+    assert final.getpixel((8, 43)) == (255, 255, 255)
+    assert min(final.getpixel((32, 19))) > 170
     assert result.parameters["line_overlay_applied"] is False
     assert _file_hash(line_draft_path) == before_hash
